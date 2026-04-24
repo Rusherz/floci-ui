@@ -8,8 +8,15 @@ Basic browser UI for navigating SQS and S3 resources from local `floci`.
 2. Start the UI server:
 
 ```bash
-cd /home/austin/Edwin/floci-ui
+cd floci-ui
 node server.js
+```
+
+Override example:
+
+```bash
+cd floci-ui
+FLOCI_ORIGIN=http://localhost:9999 PORT=4174 node server.js
 ```
 
 3. Open:
