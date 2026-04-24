@@ -1,0 +1,41 @@
+# Floci UI
+
+Basic browser UI for navigating SQS and S3 resources from local `floci`.
+
+## Start
+
+1. Ensure Floci is running on `http://localhost:4566`.
+2. Start the UI server:
+
+```bash
+cd /home/austin/Edwin/floci-ui
+node server.js
+```
+
+3. Open:
+
+- `http://localhost:4173`
+
+The server proxies `/floci/*` to `http://localhost:4566`, so browser CORS is avoided.
+
+## S3 Navigation
+
+- Objects panel is now prefix-based (folder navigation), not full-bucket dump
+- `Up` and breadcrumb path support step-by-step traversal
+- Selected file supports `Open` and `Delete` actions
+
+## Verified Endpoints (No Auth)
+
+The UI uses these real Floci-compatible AWS endpoints (XML):
+
+- `POST /` with form body `Action=ListQueues&Version=2012-11-05`
+- `POST /` with form body `Action=ReceiveMessage&QueueUrl=...&MaxNumberOfMessages=10&Version=2012-11-05`
+- `GET /` (S3 ListBuckets)
+- `GET /{bucketName}?list-type=2&max-keys=200` (S3 ListObjectsV2)
+
+## Optional Overrides
+
+- `FLOCI_ORIGIN` env var for proxy target (default `http://localhost:4566`)
+- `PORT` env var for UI port (default `4173`)
+- `window.FLOCI_API_BASE_URL` in browser if you want to bypass proxy manually
+- `window.FLOCI_SQS_ACCOUNT_ID` (default `000000000000`)

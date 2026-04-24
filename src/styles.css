@@ -1,0 +1,287 @@
+:root {
+  --bg: #f1f4f8;
+  --surface: #ffffff;
+  --surface-alt: #f9fbfd;
+  --border: #d9e2ec;
+  --text: #102a43;
+  --muted: #486581;
+  --brand: #0b7285;
+  --brand-soft: #e6f4f7;
+  --ok-bg: #e6fcf5;
+  --ok-text: #0b6e4f;
+  --error-bg: #fff5f5;
+  --error-text: #a61e4d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(140deg, #f0f4f8, #d9e2ec);
+  color: var(--text);
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+}
+
+.sidebar {
+  background: #243b53;
+  color: #f0f4f8;
+  padding: 1.25rem;
+}
+
+.sidebar h1 {
+  font-size: 1.3rem;
+  margin-top: 0;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nav-btn {
+  background: transparent;
+  color: #d9e2ec;
+  border: 1px solid #486581;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-btn.active,
+.nav-btn:hover {
+  background: #334e68;
+  color: #fff;
+}
+
+.main-content {
+  padding: 1rem;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.6rem;
+}
+
+.topbar h2 {
+  margin: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: min(460px, 100%);
+}
+
+#search-input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  width: min(320px, 100%);
+  flex: 1;
+}
+
+.refresh-btn {
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.status-banner {
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  margin: 0 0 0.8rem;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+}
+
+.status-banner.info {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  border-color: #b2f2dd;
+}
+
+.status-banner.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-color: #fcc2d7;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel h3 {
+  margin-top: 0.2rem;
+  margin-bottom: 0.8rem;
+}
+
+.s3-pathbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.path-btn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.55rem;
+  background: var(--surface-alt);
+  cursor: pointer;
+}
+
+.path-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.object-path {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.path-link {
+  border: none;
+  background: transparent;
+  color: var(--brand);
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.list-item {
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  border-radius: 8px;
+  padding: 0.55rem;
+  cursor: pointer;
+}
+
+.list-item.active {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+}
+
+.list-item.folder {
+  font-weight: 600;
+}
+
+.list-empty {
+  color: var(--muted);
+  padding: 0.35rem 0.1rem;
+}
+
+.detail-panel {
+  overflow: hidden;
+}
+
+.detail {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.35;
+  font-size: 0.9rem;
+  color: var(--muted);
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem;
+  min-height: 100%;
+}
+
+.hidden {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .nav {
+    flex-direction: row;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    min-height: 220px;
+  }
+}
+
+.object-actions {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+
+.path-btn.danger {
+  border-color: #c92a2a;
+  color: #c92a2a;
+}
+
+.path-btn.danger:hover:enabled {
+  background: #fff5f5;
+}
