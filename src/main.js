@@ -5,6 +5,7 @@ const API_CONFIG = {
   sqsPollMs: Number(window.FLOCI_SQS_POLL_MS || 5000),
 };
 const THEME_STORAGE_KEY = "floci_theme";
+const UI_STATE_STORAGE_KEY = "floci_ui_state";
 
 const state = {
   view: "sqs",
@@ -51,8 +52,6 @@ const els = {
   objectPath: document.getElementById("object-path"),
   objectUpBtn: document.getElementById("object-up-btn"),
   objectDetail: document.getElementById("object-detail"),
-  openObjectBtn: document.getElementById("open-object-btn"),
-  deleteObjectBtn: document.getElementById("delete-object-btn"),
   confirmModal: document.getElementById("confirm-modal"),
   confirmModalTitle: document.getElementById("confirm-modal-title"),
   confirmModalMessage: document.getElementById("confirm-modal-message"),
@@ -86,6 +85,53 @@ function applyTheme(theme) {
   }
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // noop
+  }
+}
+
+function loadUiState() {
+  try {
+    const raw = window.sessionStorage.getItem(UI_STATE_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function applyLoadedUiState(saved) {
+  if (!saved || typeof saved !== "object") return;
+
+  if (saved.view === "sqs" || saved.view === "s3") state.view = saved.view;
+  if (typeof saved.search === "string") state.search = saved.search;
+  if (Number.isInteger(saved.selectedQueue) && saved.selectedQueue >= 0) state.selectedQueue = saved.selectedQueue;
+  if (Number.isInteger(saved.selectedMessage) && saved.selectedMessage >= 0) state.selectedMessage = saved.selectedMessage;
+  if (Number.isInteger(saved.selectedBucket) && saved.selectedBucket >= 0) state.selectedBucket = saved.selectedBucket;
+  if (saved.s3PrefixByBucket && typeof saved.s3PrefixByBucket === "object") {
+    state.s3.prefixByBucket = saved.s3PrefixByBucket;
+  }
+  if (saved.s3SelectedObject && typeof saved.s3SelectedObject === "object") {
+    state.s3.selectedObject = saved.s3SelectedObject;
+  }
+  if (typeof saved.pollingEnabled === "boolean") {
+    state.polling.enabled = saved.pollingEnabled;
+  }
+}
+
+function persistUiState() {
+  try {
+    const payload = {
+      view: state.view,
+      search: state.search,
+      selectedQueue: state.selectedQueue,
+      selectedMessage: state.selectedMessage,
+      selectedBucket: state.selectedBucket,
+      s3PrefixByBucket: state.s3.prefixByBucket,
+      s3SelectedObject: state.s3.selectedObject,
+      pollingEnabled: state.polling.enabled,
+    };
+    window.sessionStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(payload));
   } catch {
     // noop
   }
@@ -381,6 +427,51 @@ async function deleteObject(bucketName, key) {
   }
 }
 
+async function listAllKeysForPrefix(bucketName, prefix) {
+  const keys = [];
+  let continuationToken = "";
+
+  while (true) {
+    const query = new URLSearchParams({
+      "list-type": "2",
+      "max-keys": "1000",
+      prefix,
+    });
+    if (continuationToken) query.set("continuation-token", continuationToken);
+
+    const doc = await apiGetXml(`/${bucketName}?${query.toString()}`);
+    const pageKeys = Array.from(doc.querySelectorAll("ListBucketResult > Contents > Key"))
+      .map((node) => node.textContent || "")
+      .filter(Boolean);
+    keys.push(...pageKeys);
+
+    const isTruncated = (textContent(doc, "ListBucketResult > IsTruncated") || "").toLowerCase() === "true";
+    if (!isTruncated) break;
+
+    continuationToken = textContent(doc, "ListBucketResult > NextContinuationToken");
+    if (!continuationToken) break;
+  }
+
+  return keys;
+}
+
+async function deleteFolderPrefix(bucketName, prefix) {
+  const keys = await listAllKeysForPrefix(bucketName, prefix);
+  for (const key of keys) {
+    await deleteObject(bucketName, key);
+  }
+  return keys.length;
+}
+
+function clearBucketCache(bucketName) {
+  const bucketPrefix = `${bucketName}|`;
+  for (const key of Object.keys(state.s3.entriesByLocation)) {
+    if (key.startsWith(bucketPrefix)) {
+      delete state.s3.entriesByLocation[key];
+    }
+  }
+}
+
 function setStatus(message, type = "info") {
   if (!message) {
     els.statusBanner.className = "status-banner hidden";
@@ -466,6 +557,7 @@ function render() {
   }
 
   renderPollingUi();
+  persistUiState();
 }
 
 function textMatch(value) {
@@ -616,7 +708,8 @@ function renderObjects() {
   }
 
   const folderRows = listing.folders.map(
-    (folder) => `<li class=\"list-item folder\" data-folder-prefix=\"${folder.prefix}\">📁 ${folder.name}</li>`
+    (folder) =>
+      `<li class=\"list-item folder\" data-folder-prefix=\"${folder.prefix}\"><div class=\"s3-row\"><span class=\"s3-row-main\">📁 ${folder.name}</span><span class=\"s3-row-actions\"><button class=\"path-btn danger row-action-btn\" type=\"button\" data-delete-folder-prefix=\"${folder.prefix}\">Delete</button></span></div></li>`
   );
 
   const fileRows = listing.files.map((file, index) => {
@@ -627,7 +720,7 @@ function renderObjects() {
         ? "active"
         : "";
 
-    return `<li class=\"list-item ${isActive}\" data-file-index=\"${index}\">📄 ${file.name}</li>`;
+    return `<li class=\"list-item ${isActive}\" data-file-index=\"${index}\"><div class=\"s3-row\"><span class=\"s3-row-main\">📄 ${file.name}</span><span class=\"s3-row-actions\"><button class=\"path-btn row-action-btn\" type=\"button\" data-open-file-index=\"${index}\">Open</button><button class=\"path-btn danger row-action-btn\" type=\"button\" data-delete-file-index=\"${index}\">Delete</button></span></div></li>`;
   });
 
   els.objectList.innerHTML = [...folderRows, ...fileRows].join("");
@@ -636,9 +729,6 @@ function renderObjects() {
 function renderObjectDetail() {
   const selected = state.s3.selectedObject;
   const hasObject = Boolean(selected && selected.key);
-
-  if (els.openObjectBtn) els.openObjectBtn.disabled = !hasObject;
-  if (els.deleteObjectBtn) els.deleteObjectBtn.disabled = !hasObject;
 
   if (!hasObject) {
     els.objectDetail.textContent = "Select an object.";
@@ -668,21 +758,32 @@ async function refreshCurrentView() {
 
     if (state.view === "sqs") {
       await loadQueues();
-      state.selectedQueue = 0;
-      state.selectedMessage = 0;
-      const queue = getFilteredQueues()[0];
-      if (queue) await loadMessagesForQueue(queue.name, { force: true });
+      const queues = getFilteredQueues();
+      if (queues.length) {
+        state.selectedQueue = Math.min(state.selectedQueue, queues.length - 1);
+        const queue = queues[state.selectedQueue];
+        await loadMessagesForQueue(queue.name, { force: true });
+        const messages = state.sqs.messagesByQueue[queue.name] || [];
+        state.selectedMessage = messages.length ? Math.min(state.selectedMessage, messages.length - 1) : 0;
+      } else {
+        state.selectedQueue = 0;
+        state.selectedMessage = 0;
+      }
       scheduleNextPoll();
       setStatus(`Loaded ${state.sqs.queues.length} queue(s).`, "info");
     } else {
       await loadBuckets();
-      state.selectedBucket = 0;
-      const bucket = getSelectedBucket();
-      if (bucket) {
-        setCurrentPrefix(bucket.name, "");
-        await loadObjectsForBucketPrefix(bucket.name, "");
+      const buckets = getFilteredBuckets();
+      if (buckets.length) {
+        state.selectedBucket = Math.min(state.selectedBucket, buckets.length - 1);
+      } else {
+        state.selectedBucket = 0;
       }
-      state.s3.selectedObject = null;
+      const bucket = buckets[state.selectedBucket];
+      if (bucket) {
+        const prefix = currentPrefixForBucket(bucket.name);
+        await loadObjectsForBucketPrefix(bucket.name, prefix);
+      }
       setStatus(`Loaded ${state.s3.buckets.length} bucket(s).`, "info");
     }
   } catch (error) {
@@ -782,16 +883,24 @@ function bindEvents() {
       const queue = getFilteredQueues()[state.selectedQueue];
       const messages = queue ? state.sqs.messagesByQueue[queue.name] || [] : [];
       const message = messages[state.selectedMessage];
-      const receiptHandle = message?.raw?.receiptHandle;
+      const initialReceiptHandle = message?.raw?.receiptHandle;
+      const messageId = message?.id;
 
-      if (!queue || !message || !receiptHandle) return;
+      if (!queue || !message || !initialReceiptHandle || !messageId) return;
 
       const confirmed = await confirmDialog(`Delete message ${message.id} from ${queue.name}?`, "Delete Message");
       if (!confirmed) return;
 
       try {
         setLoading(true);
-        await deleteMessage(queue.name, receiptHandle);
+        // Receipt handles are ephemeral and can change on every ReceiveMessage call,
+        // so refresh immediately before deleting and prefer the freshest handle.
+        await loadMessagesForQueue(queue.name, { force: true });
+        const latestMessages = state.sqs.messagesByQueue[queue.name] || [];
+        const latestMatch = latestMessages.find((msg) => msg.id === messageId);
+        const freshReceiptHandle = latestMatch?.raw?.receiptHandle || initialReceiptHandle;
+
+        await deleteMessage(queue.name, freshReceiptHandle);
         await loadMessagesForQueue(queue.name, { force: true });
         state.selectedMessage = 0;
         setStatus(`Deleted message ${message.id}`, "info");
@@ -821,39 +930,6 @@ function bindEvents() {
     });
   }
 
-  if (els.openObjectBtn) {
-    els.openObjectBtn.addEventListener("click", () => {
-      if (!state.s3.selectedObject) return;
-      window.open(objectUrl(state.s3.selectedObject.bucket, state.s3.selectedObject.key), "_blank", "noopener");
-    });
-  }
-
-  if (els.deleteObjectBtn) {
-    els.deleteObjectBtn.addEventListener("click", async () => {
-      const selected = state.s3.selectedObject;
-      if (!selected) return;
-
-      const confirmed = await confirmDialog(`Delete ${selected.key} from ${selected.bucket}?`, "Delete Object");
-      if (!confirmed) return;
-
-      try {
-        setLoading(true);
-        await deleteObject(selected.bucket, selected.key);
-
-        const prefix = currentPrefixForBucket(selected.bucket);
-        delete state.s3.entriesByLocation[locationKey(selected.bucket, prefix)];
-        state.s3.selectedObject = null;
-        await loadObjectsForBucketPrefix(selected.bucket, prefix);
-        setStatus(`Deleted ${selected.key}`, "info");
-      } catch (error) {
-        setStatus(error.message, "error");
-      } finally {
-        setLoading(false);
-        render();
-      }
-    });
-  }
-
   if (els.confirmModal) {
     els.confirmModal.addEventListener("click", (event) => {
       if (event.target === els.confirmModal) {
@@ -880,6 +956,9 @@ function bindEvents() {
     const queueEl = event.target.closest("[data-queue-index]");
     const messageEl = event.target.closest("[data-message-index]");
     const bucketEl = event.target.closest("[data-bucket-index]");
+    const openFileEl = event.target.closest("[data-open-file-index]");
+    const deleteFolderEl = event.target.closest("[data-delete-folder-prefix]");
+    const deleteFileEl = event.target.closest("[data-delete-file-index]");
     const folderEl = event.target.closest("[data-folder-prefix]");
     const fileEl = event.target.closest("[data-file-index]");
     const pathEl = event.target.closest("[data-path-prefix]");
@@ -909,6 +988,75 @@ function bindEvents() {
       }
       render();
       await ensureObjectsLoadedForSelection();
+      return;
+    }
+
+    if (deleteFolderEl && state.view === "s3") {
+      const bucket = getSelectedBucket();
+      if (!bucket) return;
+
+      const folderPrefix = deleteFolderEl.dataset.deleteFolderPrefix || "";
+      if (!folderPrefix) return;
+
+      const confirmed = await confirmDialog(`Delete all keys under ${folderPrefix}?`, "Delete Folder");
+      if (!confirmed) return;
+
+      try {
+        setLoading(true);
+        const deletedCount = await deleteFolderPrefix(bucket.name, folderPrefix);
+        clearBucketCache(bucket.name);
+        state.s3.selectedObject = null;
+        await loadObjectsForBucketPrefix(bucket.name, currentPrefixForBucket(bucket.name));
+        setStatus(`Deleted ${deletedCount} key(s) in ${folderPrefix}`, "info");
+      } catch (error) {
+        setStatus(error.message, "error");
+      } finally {
+        setLoading(false);
+        render();
+      }
+      return;
+    }
+
+    if (deleteFileEl && state.view === "s3") {
+      const bucket = getSelectedBucket();
+      if (!bucket) return;
+
+      const prefix = currentPrefixForBucket(bucket.name);
+      const listing = state.s3.entriesByLocation[locationKey(bucket.name, prefix)] || { files: [] };
+      const idx = Number(deleteFileEl.dataset.deleteFileIndex);
+      const file = listing.files[idx];
+      if (!file) return;
+
+      const confirmed = await confirmDialog(`Delete ${file.key} from ${bucket.name}?`, "Delete Object");
+      if (!confirmed) return;
+
+      try {
+        setLoading(true);
+        await deleteObject(bucket.name, file.key);
+        clearBucketCache(bucket.name);
+        if (state.s3.selectedObject?.key === file.key) state.s3.selectedObject = null;
+        await loadObjectsForBucketPrefix(bucket.name, prefix);
+        setStatus(`Deleted ${file.key}`, "info");
+      } catch (error) {
+        setStatus(error.message, "error");
+      } finally {
+        setLoading(false);
+        render();
+      }
+      return;
+    }
+
+    if (openFileEl && state.view === "s3") {
+      const bucket = getSelectedBucket();
+      if (!bucket) return;
+
+      const prefix = currentPrefixForBucket(bucket.name);
+      const listing = state.s3.entriesByLocation[locationKey(bucket.name, prefix)] || { files: [] };
+      const idx = Number(openFileEl.dataset.openFileIndex);
+      const file = listing.files[idx];
+      if (!file) return;
+
+      window.open(objectUrl(bucket.name, file.key), "_blank", "noopener");
       return;
     }
 
@@ -951,6 +1099,11 @@ function startPollingLoop() {
 
     await pollSelectedQueue();
   }, 200);
+}
+
+applyLoadedUiState(loadUiState());
+if (els.search) {
+  els.search.value = state.search;
 }
 
 bindEvents();
