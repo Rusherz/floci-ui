@@ -53,3 +53,26 @@ The UI uses these real Floci-compatible AWS endpoints (XML):
 - `PORT` env var for UI port (default `4173`)
 - `window.FLOCI_API_BASE_URL` in browser if you want to bypass proxy manually
 - `window.FLOCI_SQS_ACCOUNT_ID` (default `000000000000`)
+
+## Docker
+
+Build locally:
+
+```bash
+docker build -t floci-ui:local .
+```
+
+Run locally:
+
+```bash
+docker run --rm -p 4173:4173 -e FLOCI_ORIGIN=http://host.docker.internal:4566 floci-ui:local
+```
+
+## Image Publishing
+
+A GitHub Actions workflow publishes images to GHCR:
+
+- Workflow: `.github/workflows/publish-image.yml`
+- Image: `ghcr.io/rusherz/floci-ui`
+- Triggers: pushes to `main`, tags starting with `v`, and manual dispatch
+- Runner: self-hosted (Docker must be installed and available to the runner user)
