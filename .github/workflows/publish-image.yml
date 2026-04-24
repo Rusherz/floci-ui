@@ -26,19 +26,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Setup GitVersion
-        uses: gittools/actions/gitversion/setup@v3
-        with:
-          versionSpec: '6.0.x'
-
-      - name: Execute GitVersion
+      - name: Execute GitVersion (Docker)
         id: gitversion
-        uses: gittools/actions/gitversion/execute@v3
+        shell: bash
+        run: |
+          FULL_SEMVER="$(docker run --rm -v "$PWD:/repo" gittools/gitversion:6.0.5-alpine.3.20-6.0 /repo /showvariable FullSemVer)"
+          echo "fullSemVer=$FULL_SEMVER" >> "$GITHUB_OUTPUT"
 
       - name: Derive Docker tag from fullSemVer
         id: version
