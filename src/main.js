@@ -43,6 +43,7 @@ const els = {
   queueList: document.getElementById("queue-list"),
   messageList: document.getElementById("message-list"),
   messageDetail: document.getElementById("message-detail"),
+  deleteMessageBtn: document.getElementById("delete-message-btn"),
   pollToggleBtn: document.getElementById("poll-toggle-btn"),
   pollProgressFill: document.getElementById("poll-progress-fill"),
   bucketList: document.getElementById("bucket-list"),
@@ -258,6 +259,18 @@ async function loadMessagesForQueue(queueName, options = {}) {
   });
 
   state.sqs.messagesByQueue[queueName] = messages;
+}
+
+async function deleteMessage(queueName, receiptHandle) {
+  const queue = findQueueByName(queueName);
+  const queueUrl = queue?.queueUrl || extractQueueUrl(queueName);
+
+  const response = await sqsAction("DeleteMessage", {
+    QueueUrl: queueUrl,
+    ReceiptHandle: receiptHandle,
+  });
+
+  return response;
 }
 
 async function loadBuckets() {
@@ -484,6 +497,11 @@ function renderMessageDetail() {
   const queue = queues[state.selectedQueue];
   const messages = queue ? state.sqs.messagesByQueue[queue.name] || [] : [];
   const message = messages[state.selectedMessage];
+
+  if (els.deleteMessageBtn) {
+    const canDelete = Boolean(message?.raw?.receiptHandle && queue?.name);
+    els.deleteMessageBtn.disabled = !canDelete;
+  }
 
   if (!message) {
     els.messageDetail.textContent = "Select a message.";
@@ -723,6 +741,33 @@ function bindEvents() {
     els.themeToggleBtn.addEventListener("click", () => {
       const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
       applyTheme(current === "dark" ? "light" : "dark");
+    });
+  }
+
+  if (els.deleteMessageBtn) {
+    els.deleteMessageBtn.addEventListener("click", async () => {
+      const queue = getFilteredQueues()[state.selectedQueue];
+      const messages = queue ? state.sqs.messagesByQueue[queue.name] || [] : [];
+      const message = messages[state.selectedMessage];
+      const receiptHandle = message?.raw?.receiptHandle;
+
+      if (!queue || !message || !receiptHandle) return;
+
+      const confirmed = window.confirm(`Delete message ${message.id} from ${queue.name}?`);
+      if (!confirmed) return;
+
+      try {
+        setLoading(true);
+        await deleteMessage(queue.name, receiptHandle);
+        await loadMessagesForQueue(queue.name, { force: true });
+        state.selectedMessage = 0;
+        setStatus(`Deleted message ${message.id}`, "info");
+      } catch (error) {
+        setStatus(error.message, "error");
+      } finally {
+        setLoading(false);
+        render();
+      }
     });
   }
 
