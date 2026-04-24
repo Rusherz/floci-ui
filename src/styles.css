@@ -391,12 +391,6 @@ body {
   }
 }
 
-.object-actions {
-  display: flex;
-  gap: 0.45rem;
-  margin-bottom: 0.6rem;
-}
-
 .path-btn.danger {
   background: var(--danger-btn-bg);
   border-color: var(--danger-btn-border);
@@ -405,6 +399,32 @@ body {
 
 .path-btn.danger:hover:enabled {
   background: var(--danger-btn-hover-bg);
+}
+
+.row-action-btn {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.8rem;
+}
+
+.s3-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.s3-row-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.s3-row-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .modal-overlay {
@@ -416,6 +436,10 @@ body {
   justify-content: center;
   padding: 1rem;
   z-index: 1200;
+}
+
+.modal-overlay.hidden {
+  display: none;
 }
 
 .modal {
