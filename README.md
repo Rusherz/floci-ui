@@ -76,3 +76,4 @@ A GitHub Actions workflow publishes images to GHCR:
 - Image: `ghcr.io/rusherz/floci-ui`
 - Triggers: pushes to `main`, tags starting with `v`, and manual dispatch
 - Runner: self-hosted (Docker must be installed and available to the runner user)
+- Version tag: derived from GitVersion `fullSemVer` (mirrors `next-core`; `+` is replaced with `.` for Docker compatibility)
