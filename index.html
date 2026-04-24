@@ -47,8 +47,8 @@
           </section>
 
           <section class="panel detail-panel">
-            <h3>Message Detail</h3>
-            <div class="object-actions">
+            <div class="panel-title-row">
+              <h3>Message Detail</h3>
               <button id="delete-message-btn" class="path-btn danger" type="button" disabled>Delete</button>
             </div>
             <pre id="message-detail" class="detail">Select a message.</pre>
@@ -80,6 +80,17 @@
           </section>
         </section>
       </main>
+    </div>
+
+    <div id="confirm-modal" class="modal-overlay hidden" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+        <h3 id="confirm-modal-title">Confirm</h3>
+        <p id="confirm-modal-message" class="modal-message"></p>
+        <div class="modal-actions">
+          <button id="confirm-modal-cancel" class="path-btn" type="button">Cancel</button>
+          <button id="confirm-modal-confirm" class="path-btn danger" type="button">Confirm</button>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="./src/main.js"></script>

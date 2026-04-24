@@ -53,10 +53,16 @@ const els = {
   objectDetail: document.getElementById("object-detail"),
   openObjectBtn: document.getElementById("open-object-btn"),
   deleteObjectBtn: document.getElementById("delete-object-btn"),
+  confirmModal: document.getElementById("confirm-modal"),
+  confirmModalTitle: document.getElementById("confirm-modal-title"),
+  confirmModalMessage: document.getElementById("confirm-modal-message"),
+  confirmModalCancel: document.getElementById("confirm-modal-cancel"),
+  confirmModalConfirm: document.getElementById("confirm-modal-confirm"),
 };
 
 state.polling.intervalMs = API_CONFIG.sqsPollMs > 0 ? API_CONFIG.sqsPollMs : 5000;
 state.polling.nextPollAt = Date.now() + state.polling.intervalMs;
+let confirmResolve = null;
 
 function getStoredTheme() {
   try {
@@ -83,6 +89,33 @@ function applyTheme(theme) {
   } catch {
     // noop
   }
+}
+
+function closeConfirmModal(value) {
+  if (!els.confirmModal) return;
+  els.confirmModal.classList.add("hidden");
+  els.confirmModal.setAttribute("aria-hidden", "true");
+  if (confirmResolve) {
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    resolve(value);
+  }
+}
+
+function confirmDialog(message, title = "Confirm") {
+  if (!els.confirmModal || !els.confirmModalTitle || !els.confirmModalMessage) {
+    return Promise.resolve(window.confirm(message));
+  }
+
+  els.confirmModalTitle.textContent = title;
+  els.confirmModalMessage.textContent = message;
+  els.confirmModal.classList.remove("hidden");
+  els.confirmModal.setAttribute("aria-hidden", "false");
+
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+    if (els.confirmModalCancel) els.confirmModalCancel.focus();
+  });
 }
 
 function joinUrl(base, path = "") {
@@ -753,7 +786,7 @@ function bindEvents() {
 
       if (!queue || !message || !receiptHandle) return;
 
-      const confirmed = window.confirm(`Delete message ${message.id} from ${queue.name}?`);
+      const confirmed = await confirmDialog(`Delete message ${message.id} from ${queue.name}?`, "Delete Message");
       if (!confirmed) return;
 
       try {
@@ -800,7 +833,7 @@ function bindEvents() {
       const selected = state.s3.selectedObject;
       if (!selected) return;
 
-      const confirmed = window.confirm(`Delete ${selected.key} from ${selected.bucket}?`);
+      const confirmed = await confirmDialog(`Delete ${selected.key} from ${selected.bucket}?`, "Delete Object");
       if (!confirmed) return;
 
       try {
@@ -820,6 +853,28 @@ function bindEvents() {
       }
     });
   }
+
+  if (els.confirmModal) {
+    els.confirmModal.addEventListener("click", (event) => {
+      if (event.target === els.confirmModal) {
+        closeConfirmModal(false);
+      }
+    });
+  }
+
+  if (els.confirmModalCancel) {
+    els.confirmModalCancel.addEventListener("click", () => closeConfirmModal(false));
+  }
+
+  if (els.confirmModalConfirm) {
+    els.confirmModalConfirm.addEventListener("click", () => closeConfirmModal(true));
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && els.confirmModal && !els.confirmModal.classList.contains("hidden")) {
+      closeConfirmModal(false);
+    }
+  });
 
   document.body.addEventListener("click", async (event) => {
     const queueEl = event.target.closest("[data-queue-index]");
