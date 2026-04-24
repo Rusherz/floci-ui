@@ -2,7 +2,9 @@ const API_CONFIG = {
   baseUrl: window.FLOCI_API_BASE_URL || `${window.location.origin}/floci`,
   sqsAccountId: window.FLOCI_SQS_ACCOUNT_ID || "000000000000",
   sqsVersion: "2012-11-05",
+  sqsPollMs: Number(window.FLOCI_SQS_POLL_MS || 5000),
 };
+const THEME_STORAGE_KEY = "floci_theme";
 
 const state = {
   view: "sqs",
@@ -21,6 +23,12 @@ const state = {
     entriesByLocation: {},
     selectedObject: null,
   },
+  polling: {
+    enabled: true,
+    running: false,
+    intervalMs: 5000,
+    nextPollAt: Date.now(),
+  },
 };
 
 const els = {
@@ -28,12 +36,15 @@ const els = {
   navButtons: document.querySelectorAll(".nav-btn"),
   search: document.getElementById("search-input"),
   refreshBtn: document.getElementById("refresh-btn"),
+  themeToggleBtn: document.getElementById("theme-toggle-btn"),
   statusBanner: document.getElementById("status-banner"),
   sqsView: document.getElementById("sqs-view"),
   s3View: document.getElementById("s3-view"),
   queueList: document.getElementById("queue-list"),
   messageList: document.getElementById("message-list"),
   messageDetail: document.getElementById("message-detail"),
+  pollToggleBtn: document.getElementById("poll-toggle-btn"),
+  pollProgressFill: document.getElementById("poll-progress-fill"),
   bucketList: document.getElementById("bucket-list"),
   objectList: document.getElementById("object-list"),
   objectPath: document.getElementById("object-path"),
@@ -42,6 +53,36 @@ const els = {
   openObjectBtn: document.getElementById("open-object-btn"),
   deleteObjectBtn: document.getElementById("delete-object-btn"),
 };
+
+state.polling.intervalMs = API_CONFIG.sqsPollMs > 0 ? API_CONFIG.sqsPollMs : 5000;
+state.polling.nextPollAt = Date.now() + state.polling.intervalMs;
+
+function getStoredTheme() {
+  try {
+    const value = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return value === "dark" || value === "light" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveInitialTheme() {
+  const stored = getStoredTheme();
+  if (stored) return stored;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  if (els.themeToggleBtn) {
+    els.themeToggleBtn.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+  }
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // noop
+  }
+}
 
 function joinUrl(base, path = "") {
   const cleanBase = base.replace(/\/$/, "");
@@ -174,9 +215,9 @@ async function loadQueues() {
   state.sqs.messagesByQueue = {};
 }
 
-async function loadMessagesForQueue(queueName) {
+async function loadMessagesForQueue(queueName, options = {}) {
   if (!queueName) return;
-  if (state.sqs.messagesByQueue[queueName]) return;
+  if (state.sqs.messagesByQueue[queueName] && !options.force) return;
 
   const queue = findQueueByName(queueName);
   const queueUrl = queue?.queueUrl || extractQueueUrl(queueName);
@@ -310,6 +351,54 @@ function setLoading(value) {
   els.refreshBtn.disabled = value;
 }
 
+function scheduleNextPoll() {
+  state.polling.nextPollAt = Date.now() + state.polling.intervalMs;
+}
+
+function setPollingEnabled(enabled) {
+  state.polling.enabled = enabled;
+  if (enabled) scheduleNextPoll();
+  renderPollingUi();
+}
+
+function renderPollingUi() {
+  if (els.pollToggleBtn) {
+    els.pollToggleBtn.textContent = state.polling.enabled ? "Pause" : "Resume";
+  }
+  updatePollingProgress();
+}
+
+function updatePollingProgress() {
+  if (!els.pollProgressFill) return;
+  if (!state.polling.enabled || state.view !== "sqs") {
+    els.pollProgressFill.style.width = "0%";
+    return;
+  }
+
+  const remaining = Math.max(0, state.polling.nextPollAt - Date.now());
+  const pct = ((state.polling.intervalMs - remaining) / state.polling.intervalMs) * 100;
+  const clamped = Math.max(0, Math.min(100, pct));
+  els.pollProgressFill.style.width = `${clamped}%`;
+}
+
+async function pollSelectedQueue() {
+  if (state.view !== "sqs" || state.loading || state.polling.running) return;
+  const queue = getFilteredQueues()[state.selectedQueue];
+  if (!queue) return;
+
+  state.polling.running = true;
+  try {
+    await loadMessagesForQueue(queue.name, { force: true });
+    render();
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    state.polling.running = false;
+    scheduleNextPoll();
+    renderPollingUi();
+  }
+}
+
 function render() {
   const isSqs = state.view === "sqs";
   els.title.textContent = isSqs ? "SQS Explorer" : "S3 Explorer";
@@ -329,6 +418,8 @@ function render() {
     renderObjects();
     renderObjectDetail();
   }
+
+  renderPollingUi();
 }
 
 function textMatch(value) {
@@ -529,7 +620,8 @@ async function refreshCurrentView() {
       state.selectedQueue = 0;
       state.selectedMessage = 0;
       const queue = getFilteredQueues()[0];
-      if (queue) await loadMessagesForQueue(queue.name);
+      if (queue) await loadMessagesForQueue(queue.name, { force: true });
+      scheduleNextPoll();
       setStatus(`Loaded ${state.sqs.queues.length} queue(s).`, "info");
     } else {
       await loadBuckets();
@@ -620,6 +712,19 @@ function bindEvents() {
     state.s3.selectedObject = null;
     render();
   });
+
+  if (els.pollToggleBtn) {
+    els.pollToggleBtn.addEventListener("click", () => {
+      setPollingEnabled(!state.polling.enabled);
+    });
+  }
+
+  if (els.themeToggleBtn) {
+    els.themeToggleBtn.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      applyTheme(current === "dark" ? "light" : "dark");
+    });
+  }
 
   els.refreshBtn.addEventListener("click", async () => {
     if (state.view === "sqs") {
@@ -736,6 +841,20 @@ function bindEvents() {
   });
 }
 
+function startPollingLoop() {
+  window.setInterval(async () => {
+    updatePollingProgress();
+
+    if (!state.polling.enabled || state.view !== "sqs") return;
+    if (state.polling.running || state.loading) return;
+    if (Date.now() < state.polling.nextPollAt) return;
+
+    await pollSelectedQueue();
+  }, 200);
+}
+
 bindEvents();
+applyTheme(resolveInitialTheme());
+startPollingLoop();
 render();
 refreshCurrentView();

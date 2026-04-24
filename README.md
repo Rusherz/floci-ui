@@ -31,6 +31,13 @@ The server proxies `/floci/*` to `http://localhost:4566`, so browser CORS is avo
 - `Up` and breadcrumb path support step-by-step traversal
 - Selected file supports `Open` and `Delete` actions
 
+## SQS Polling
+
+- Messages auto-poll every 5 seconds for the selected queue
+- Progress bar under `Messages` shows time until next poll
+- `Pause`/`Resume` button toggles polling
+- Optional override: `window.FLOCI_SQS_POLL_MS`
+
 ## Verified Endpoints (No Auth)
 
 The UI uses these real Floci-compatible AWS endpoints (XML):

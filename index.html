@@ -14,6 +14,9 @@
           <button class="nav-btn active" data-view="sqs">SQS</button>
           <button class="nav-btn" data-view="s3">S3</button>
         </nav>
+        <div class="sidebar-footer">
+          <button id="theme-toggle-btn" class="theme-btn" type="button">Dark Mode</button>
+        </div>
       </aside>
 
       <main class="main-content">
@@ -33,7 +36,13 @@
           </section>
 
           <section class="panel">
-            <h3>Messages</h3>
+            <div class="panel-title-row">
+              <h3>Messages</h3>
+              <button id="poll-toggle-btn" class="path-btn" type="button">Pause</button>
+            </div>
+            <div class="poll-progress" aria-label="SQS polling progress">
+              <div id="poll-progress-fill" class="poll-progress-fill"></div>
+            </div>
             <ul id="message-list" class="list"></ul>
           </section>
 
