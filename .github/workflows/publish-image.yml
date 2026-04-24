@@ -33,6 +33,13 @@ jobs:
           FULL_SEMVER="$(docker run --rm -v "$PWD:/repo" gittools/gitversion:6.0.5-alpine.3.20-6.0 /repo /showvariable FullSemVer)"
           echo "fullSemVer=$FULL_SEMVER" >> "$GITHUB_OUTPUT"
 
+      - name: Normalize image name
+        id: image
+        shell: bash
+        run: |
+          IMAGE_REPO_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          echo "repo=$IMAGE_REPO_LC" >> "$GITHUB_OUTPUT"
+
       - name: Derive Docker tag from fullSemVer
         id: version
         shell: bash
@@ -56,13 +63,13 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository }}:${{ steps.version.outputs.semver_safe }}
+          tags: ${{ env.REGISTRY }}/${{ steps.image.outputs.repo }}:${{ steps.version.outputs.semver_safe }}
 
       - name: Tag and push latest (default branch only)
         if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}"
+          IMAGE="${{ env.REGISTRY }}/${{ steps.image.outputs.repo }}"
           VERSION_TAG='${{ steps.version.outputs.semver_safe }}'
           docker pull "$IMAGE:$VERSION_TAG"
           docker tag "$IMAGE:$VERSION_TAG" "$IMAGE:latest"
