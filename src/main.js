@@ -553,7 +553,6 @@ async function runS3SearchForCurrentBucket() {
   render();
 
   try {
-    let keys = [];
     let folders = [];
     let files = [];
 
@@ -564,10 +563,17 @@ async function runS3SearchForCurrentBucket() {
       folders = listing.folders;
       files = listing.files;
     } else {
-      const allKeys = await listAllKeysForPrefix(bucket.name, "");
-      keys = allKeys.filter((k) => k.toLowerCase().includes(queryLower));
-      folders = buildFolderEntriesFromKeys(allKeys).filter((f) => f.prefix.toLowerCase().includes(queryLower));
-      files = keys.map((key) => buildFileEntry(bucket.name, key, ""));
+      // Path filter mode: search only immediate children under the parent prefix.
+      const slashIdx = query.lastIndexOf("/");
+      const parentPrefix = slashIdx >= 0 ? query.slice(0, slashIdx + 1) : "";
+      const leaf = slashIdx >= 0 ? query.slice(slashIdx + 1) : query;
+      const leafLower = leaf.toLowerCase();
+
+      await loadObjectsForBucketPrefix(bucket.name, parentPrefix);
+      const listing = state.s3.entriesByLocation[locationKey(bucket.name, parentPrefix)] || { folders: [], files: [] };
+
+      folders = listing.folders.filter((folder) => folder.name.toLowerCase().startsWith(leafLower));
+      files = listing.files.filter((file) => file.name.toLowerCase().startsWith(leafLower));
     }
 
     if (thisReq !== state.s3.searchRequestId) return;
