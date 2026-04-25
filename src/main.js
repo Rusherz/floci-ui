@@ -555,15 +555,19 @@ async function runS3SearchForCurrentBucket() {
   try {
     let keys = [];
     let folders = [];
+    let files = [];
 
     if (query.endsWith("/")) {
-      keys = await listAllKeysForPrefix(bucket.name, query);
-      folders = buildFolderEntriesFromKeys(keys, query).filter((f) => f.prefix !== query);
-      keys = keys.filter((k) => k !== query);
+      // Prefix mode: show only immediate children under the prefix.
+      await loadObjectsForBucketPrefix(bucket.name, query);
+      const listing = state.s3.entriesByLocation[locationKey(bucket.name, query)] || { folders: [], files: [] };
+      folders = listing.folders;
+      files = listing.files;
     } else {
       const allKeys = await listAllKeysForPrefix(bucket.name, "");
       keys = allKeys.filter((k) => k.toLowerCase().includes(queryLower));
       folders = buildFolderEntriesFromKeys(allKeys).filter((f) => f.prefix.toLowerCase().includes(queryLower));
+      files = keys.map((key) => buildFileEntry(bucket.name, key, ""));
     }
 
     if (thisReq !== state.s3.searchRequestId) return;
@@ -572,7 +576,7 @@ async function runS3SearchForCurrentBucket() {
       bucket: bucket.name,
       query,
       folders,
-      files: keys.map((key) => buildFileEntry(bucket.name, key, query.endsWith("/") ? query : "")),
+      files,
     };
   } catch (error) {
     if (thisReq !== state.s3.searchRequestId) return;
