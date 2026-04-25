@@ -23,6 +23,11 @@ const state = {
     prefixByBucket: {},
     entriesByLocation: {},
     selectedObject: null,
+    allKeysByBucket: {},
+    searchResults: null,
+    searchLoading: false,
+    searchRequestId: 0,
+    renderedFilesByKey: {},
   },
   polling: {
     enabled: true,
@@ -363,6 +368,10 @@ async function loadBuckets() {
   state.s3.buckets = buckets;
   state.s3.entriesByLocation = {};
   state.s3.selectedObject = null;
+  state.s3.allKeysByBucket = {};
+  state.s3.searchResults = null;
+  state.s3.searchLoading = false;
+  state.s3.searchRequestId = 0;
 
   for (const bucket of buckets) {
     if (state.s3.prefixByBucket[bucket.name] === undefined) {
@@ -428,6 +437,10 @@ async function deleteObject(bucketName, key) {
 }
 
 async function listAllKeysForPrefix(bucketName, prefix) {
+  if (!prefix && Array.isArray(state.s3.allKeysByBucket[bucketName])) {
+    return state.s3.allKeysByBucket[bucketName];
+  }
+
   const keys = [];
   let continuationToken = "";
 
@@ -452,6 +465,10 @@ async function listAllKeysForPrefix(bucketName, prefix) {
     if (!continuationToken) break;
   }
 
+  if (!prefix) {
+    state.s3.allKeysByBucket[bucketName] = keys;
+  }
+
   return keys;
 }
 
@@ -468,6 +485,97 @@ function clearBucketCache(bucketName) {
   for (const key of Object.keys(state.s3.entriesByLocation)) {
     if (key.startsWith(bucketPrefix)) {
       delete state.s3.entriesByLocation[key];
+    }
+  }
+  delete state.s3.allKeysByBucket[bucketName];
+}
+
+function buildFolderEntriesFromKeys(keys, prefix = "") {
+  const folders = new Set();
+
+  for (const key of keys) {
+    const parts = key.split("/").filter(Boolean);
+    if (parts.length <= 1) continue;
+
+    let running = "";
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      running += `${parts[i]}/`;
+      folders.add(running);
+    }
+  }
+
+  return Array.from(folders)
+    .filter((folderPrefix) => !prefix || folderPrefix.startsWith(prefix))
+    .map((folderPrefix) => {
+      const relative = prefix ? folderPrefix.slice(prefix.length) : folderPrefix;
+      const name = relative.replace(/\/$/, "").split("/").filter(Boolean).pop() || folderPrefix;
+      return {
+        type: "folder",
+        name,
+        prefix: folderPrefix,
+      };
+    });
+}
+
+function buildFileEntry(bucketName, key, rootPrefix = "") {
+  const relative = rootPrefix && key.startsWith(rootPrefix) ? key.slice(rootPrefix.length) : key;
+  return {
+    type: "file",
+    bucket: bucketName,
+    key,
+    name: relative || key,
+    size: "",
+    lastModified: "",
+    etag: "",
+  };
+}
+
+async function runS3SearchForCurrentBucket() {
+  const queryRaw = state.search.trim();
+  if (!queryRaw || state.view !== "s3") {
+    state.s3.searchResults = null;
+    state.s3.searchLoading = false;
+    return;
+  }
+
+  const bucket = getSelectedBucket();
+  if (!bucket) return;
+
+  const query = queryRaw.replace(/^\/+/, "");
+  const queryLower = query.toLowerCase();
+  const thisReq = ++state.s3.searchRequestId;
+  state.s3.searchLoading = true;
+  render();
+
+  try {
+    let keys = [];
+    let folders = [];
+
+    if (query.endsWith("/")) {
+      keys = await listAllKeysForPrefix(bucket.name, query);
+      folders = buildFolderEntriesFromKeys(keys, query).filter((f) => f.prefix !== query);
+      keys = keys.filter((k) => k !== query);
+    } else {
+      const allKeys = await listAllKeysForPrefix(bucket.name, "");
+      keys = allKeys.filter((k) => k.toLowerCase().includes(queryLower));
+      folders = buildFolderEntriesFromKeys(allKeys).filter((f) => f.prefix.toLowerCase().includes(queryLower));
+    }
+
+    if (thisReq !== state.s3.searchRequestId) return;
+
+    state.s3.searchResults = {
+      bucket: bucket.name,
+      query,
+      folders,
+      files: keys.map((key) => buildFileEntry(bucket.name, key, query.endsWith("/") ? query : "")),
+    };
+  } catch (error) {
+    if (thisReq !== state.s3.searchRequestId) return;
+    setStatus(error.message, "error");
+  } finally {
+    if (thisReq === state.s3.searchRequestId) {
+      state.s3.searchLoading = false;
+      render();
     }
   }
 }
@@ -702,17 +810,31 @@ function renderObjects() {
     els.objectUpBtn.dataset.parentPrefix = parentPrefix(prefix);
   }
 
-  const searchTerm = state.search.trim().toLowerCase();
-  const filteredFolders = !searchTerm
-    ? listing.folders
-    : listing.folders.filter((folder) => {
-        return folder.name.toLowerCase().includes(searchTerm) || folder.prefix.toLowerCase().includes(searchTerm);
-      });
-  const filteredFiles = !searchTerm
-    ? listing.files
-    : listing.files.filter((file) => {
-        return file.name.toLowerCase().includes(searchTerm) || file.key.toLowerCase().includes(searchTerm);
-      });
+  const searchTerm = state.search.trim();
+  let filteredFolders = listing.folders;
+  let filteredFiles = listing.files;
+
+  if (searchTerm) {
+    if (
+      state.s3.searchResults &&
+      state.s3.searchResults.bucket === bucket.name &&
+      state.s3.searchResults.query === searchTerm.replace(/^\/+/, "")
+    ) {
+      filteredFolders = state.s3.searchResults.folders;
+      filteredFiles = state.s3.searchResults.files;
+    } else if (state.s3.searchLoading) {
+      els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
+      return;
+    } else {
+      els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
+      return;
+    }
+  }
+
+  state.s3.renderedFilesByKey = {};
+  for (const file of filteredFiles) {
+    state.s3.renderedFilesByKey[file.key] = file;
+  }
 
   if (!filteredFolders.length && !filteredFiles.length) {
     els.objectList.innerHTML = searchTerm
@@ -870,15 +992,20 @@ function bindEvents() {
     });
   });
 
-  els.search.addEventListener("input", (event) => {
+  els.search.addEventListener("input", async (event) => {
     state.search = event.target.value;
     if (state.view === "sqs") {
       state.selectedQueue = 0;
       state.selectedMessage = 0;
     } else {
       state.s3.selectedObject = null;
+      state.s3.searchResults = null;
+      state.s3.searchRequestId += 1;
     }
     render();
+    if (state.view === "s3") {
+      await runS3SearchForCurrentBucket();
+    }
   });
 
   if (els.pollToggleBtn) {
@@ -935,6 +1062,9 @@ function bindEvents() {
     } else {
       state.s3.entriesByLocation = {};
       state.s3.selectedObject = null;
+      state.s3.searchResults = null;
+      state.s3.searchLoading = false;
+      state.s3.searchRequestId += 1;
     }
     await refreshCurrentView();
   });
@@ -996,6 +1126,8 @@ function bindEvents() {
     if (bucketEl) {
       state.selectedBucket = Number(bucketEl.dataset.bucketIndex);
       state.s3.selectedObject = null;
+      state.s3.searchResults = null;
+      state.s3.searchRequestId += 1;
       const bucket = getSelectedBucket();
       if (bucket) {
         if (state.s3.prefixByBucket[bucket.name] === undefined) {
@@ -1004,6 +1136,9 @@ function bindEvents() {
       }
       render();
       await ensureObjectsLoadedForSelection();
+      if (state.search.trim()) {
+        await runS3SearchForCurrentBucket();
+      }
       return;
     }
 
@@ -1081,11 +1216,8 @@ function bindEvents() {
     if (fileEl && state.view === "s3") {
       const bucket = getSelectedBucket();
       if (!bucket) return;
-
-      const prefix = currentPrefixForBucket(bucket.name);
-      const listing = state.s3.entriesByLocation[locationKey(bucket.name, prefix)] || { files: [] };
-      const idx = Number(fileEl.dataset.fileIndex);
-      const file = listing.files[idx];
+      const key = fileEl.dataset.fileKey || "";
+      const file = key ? state.s3.renderedFilesByKey[key] : null;
       if (!file) return;
 
       state.s3.selectedObject = {
