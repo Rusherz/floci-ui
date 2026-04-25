@@ -569,7 +569,7 @@ function getFilteredQueues() {
 }
 
 function getFilteredBuckets() {
-  return state.s3.buckets.filter((b) => textMatch(b.name));
+  return state.s3.buckets;
 }
 
 function getSelectedBucket() {
@@ -702,17 +702,31 @@ function renderObjects() {
     els.objectUpBtn.dataset.parentPrefix = parentPrefix(prefix);
   }
 
-  if (!listing.folders.length && !listing.files.length) {
-    els.objectList.innerHTML = '<li class="list-empty">No objects or folders in this path.</li>';
+  const searchTerm = state.search.trim().toLowerCase();
+  const filteredFolders = !searchTerm
+    ? listing.folders
+    : listing.folders.filter((folder) => {
+        return folder.name.toLowerCase().includes(searchTerm) || folder.prefix.toLowerCase().includes(searchTerm);
+      });
+  const filteredFiles = !searchTerm
+    ? listing.files
+    : listing.files.filter((file) => {
+        return file.name.toLowerCase().includes(searchTerm) || file.key.toLowerCase().includes(searchTerm);
+      });
+
+  if (!filteredFolders.length && !filteredFiles.length) {
+    els.objectList.innerHTML = searchTerm
+      ? '<li class="list-empty">No objects or folders match search.</li>'
+      : '<li class="list-empty">No objects or folders in this path.</li>';
     return;
   }
 
-  const folderRows = listing.folders.map(
+  const folderRows = filteredFolders.map(
     (folder) =>
       `<li class=\"list-item folder\" data-folder-prefix=\"${folder.prefix}\"><div class=\"s3-row\"><span class=\"s3-row-main\">📁 ${folder.name}</span><span class=\"s3-row-actions\"><button class=\"path-btn danger row-action-btn\" type=\"button\" data-delete-folder-prefix=\"${folder.prefix}\">Delete</button></span></div></li>`
   );
 
-  const fileRows = listing.files.map((file, index) => {
+  const fileRows = filteredFiles.map((file, index) => {
     const isActive =
       state.s3.selectedObject &&
       state.s3.selectedObject.bucket === bucket.name &&
@@ -720,7 +734,7 @@ function renderObjects() {
         ? "active"
         : "";
 
-    return `<li class=\"list-item ${isActive}\" data-file-index=\"${index}\"><div class=\"s3-row\"><span class=\"s3-row-main\">📄 ${file.name}</span><span class=\"s3-row-actions\"><button class=\"path-btn row-action-btn\" type=\"button\" data-open-file-index=\"${index}\">Open</button><button class=\"path-btn danger row-action-btn\" type=\"button\" data-delete-file-index=\"${index}\">Delete</button></span></div></li>`;
+    return `<li class=\"list-item ${isActive}\" data-file-index=\"${index}\" data-file-key=\"${file.key}\"><div class=\"s3-row\"><span class=\"s3-row-main\">📄 ${file.name}</span><span class=\"s3-row-actions\"><button class=\"path-btn row-action-btn\" type=\"button\" data-open-file-key=\"${file.key}\">Open</button><button class=\"path-btn danger row-action-btn\" type=\"button\" data-delete-file-key=\"${file.key}\">Delete</button></span></div></li>`;
   });
 
   els.objectList.innerHTML = [...folderRows, ...fileRows].join("");
@@ -858,10 +872,12 @@ function bindEvents() {
 
   els.search.addEventListener("input", (event) => {
     state.search = event.target.value;
-    state.selectedQueue = 0;
-    state.selectedBucket = 0;
-    state.selectedMessage = 0;
-    state.s3.selectedObject = null;
+    if (state.view === "sqs") {
+      state.selectedQueue = 0;
+      state.selectedMessage = 0;
+    } else {
+      state.s3.selectedObject = null;
+    }
     render();
   });
 
@@ -956,9 +972,9 @@ function bindEvents() {
     const queueEl = event.target.closest("[data-queue-index]");
     const messageEl = event.target.closest("[data-message-index]");
     const bucketEl = event.target.closest("[data-bucket-index]");
-    const openFileEl = event.target.closest("[data-open-file-index]");
+    const openFileEl = event.target.closest("[data-open-file-key]");
     const deleteFolderEl = event.target.closest("[data-delete-folder-prefix]");
-    const deleteFileEl = event.target.closest("[data-delete-file-index]");
+    const deleteFileEl = event.target.closest("[data-delete-file-key]");
     const folderEl = event.target.closest("[data-folder-prefix]");
     const fileEl = event.target.closest("[data-file-index]");
     const pathEl = event.target.closest("[data-path-prefix]");
@@ -1020,23 +1036,20 @@ function bindEvents() {
     if (deleteFileEl && state.view === "s3") {
       const bucket = getSelectedBucket();
       if (!bucket) return;
+      const key = deleteFileEl.dataset.deleteFileKey || "";
+      if (!key) return;
 
-      const prefix = currentPrefixForBucket(bucket.name);
-      const listing = state.s3.entriesByLocation[locationKey(bucket.name, prefix)] || { files: [] };
-      const idx = Number(deleteFileEl.dataset.deleteFileIndex);
-      const file = listing.files[idx];
-      if (!file) return;
-
-      const confirmed = await confirmDialog(`Delete ${file.key} from ${bucket.name}?`, "Delete Object");
+      const confirmed = await confirmDialog(`Delete ${key} from ${bucket.name}?`, "Delete Object");
       if (!confirmed) return;
 
       try {
         setLoading(true);
-        await deleteObject(bucket.name, file.key);
+        await deleteObject(bucket.name, key);
         clearBucketCache(bucket.name);
-        if (state.s3.selectedObject?.key === file.key) state.s3.selectedObject = null;
+        if (state.s3.selectedObject?.key === key) state.s3.selectedObject = null;
+        const prefix = currentPrefixForBucket(bucket.name);
         await loadObjectsForBucketPrefix(bucket.name, prefix);
-        setStatus(`Deleted ${file.key}`, "info");
+        setStatus(`Deleted ${key}`, "info");
       } catch (error) {
         setStatus(error.message, "error");
       } finally {
@@ -1049,14 +1062,9 @@ function bindEvents() {
     if (openFileEl && state.view === "s3") {
       const bucket = getSelectedBucket();
       if (!bucket) return;
-
-      const prefix = currentPrefixForBucket(bucket.name);
-      const listing = state.s3.entriesByLocation[locationKey(bucket.name, prefix)] || { files: [] };
-      const idx = Number(openFileEl.dataset.openFileIndex);
-      const file = listing.files[idx];
-      if (!file) return;
-
-      window.open(objectUrl(bucket.name, file.key), "_blank", "noopener");
+      const key = openFileEl.dataset.openFileKey || "";
+      if (!key) return;
+      window.open(objectUrl(bucket.name, key), "_blank", "noopener");
       return;
     }
 
