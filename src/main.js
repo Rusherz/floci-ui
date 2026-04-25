@@ -542,6 +542,11 @@ async function runS3SearchForCurrentBucket() {
   if (!bucket) return;
 
   const query = queryRaw.replace(/^\/+/, "");
+  if (!query.includes("/")) {
+    state.s3.searchResults = null;
+    state.s3.searchLoading = false;
+    return;
+  }
   const queryLower = query.toLowerCase();
   const thisReq = ++state.s3.searchRequestId;
   state.s3.searchLoading = true;
@@ -811,23 +816,30 @@ function renderObjects() {
   }
 
   const searchTerm = state.search.trim();
+  const isPathSearch = searchTerm.includes("/");
   let filteredFolders = listing.folders;
   let filteredFiles = listing.files;
 
   if (searchTerm) {
-    if (
-      state.s3.searchResults &&
-      state.s3.searchResults.bucket === bucket.name &&
-      state.s3.searchResults.query === searchTerm.replace(/^\/+/, "")
-    ) {
-      filteredFolders = state.s3.searchResults.folders;
-      filteredFiles = state.s3.searchResults.files;
-    } else if (state.s3.searchLoading) {
-      els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
-      return;
+    if (isPathSearch) {
+      if (
+        state.s3.searchResults &&
+        state.s3.searchResults.bucket === bucket.name &&
+        state.s3.searchResults.query === searchTerm.replace(/^\/+/, "")
+      ) {
+        filteredFolders = state.s3.searchResults.folders;
+        filteredFiles = state.s3.searchResults.files;
+      } else if (state.s3.searchLoading) {
+        els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
+        return;
+      } else {
+        els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
+        return;
+      }
     } else {
-      els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
-      return;
+      const q = searchTerm.toLowerCase();
+      filteredFolders = listing.folders.filter((folder) => folder.name.toLowerCase().startsWith(q));
+      filteredFiles = listing.files.filter((file) => file.name.toLowerCase().startsWith(q));
     }
   }
 
@@ -1003,7 +1015,7 @@ function bindEvents() {
       state.s3.searchRequestId += 1;
     }
     render();
-    if (state.view === "s3") {
+    if (state.view === "s3" && state.search.trim().includes("/")) {
       await runS3SearchForCurrentBucket();
     }
   });
@@ -1136,7 +1148,7 @@ function bindEvents() {
       }
       render();
       await ensureObjectsLoadedForSelection();
-      if (state.search.trim()) {
+      if (state.search.trim().includes("/")) {
         await runS3SearchForCurrentBucket();
       }
       return;
