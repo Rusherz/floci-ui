@@ -826,7 +826,8 @@ function renderObjects() {
   }
 
   const searchTerm = state.search.trim();
-  const isPathSearch = searchTerm.includes("/");
+  const normalizedPathQuery = searchTerm.replace(/^\/+/, "");
+  const isPathSearch = normalizedPathQuery.includes("/");
   let filteredFolders = listing.folders;
   let filteredFiles = listing.files;
 
@@ -835,7 +836,7 @@ function renderObjects() {
       if (
         state.s3.searchResults &&
         state.s3.searchResults.bucket === bucket.name &&
-        state.s3.searchResults.query === searchTerm.replace(/^\/+/, "")
+        state.s3.searchResults.query === normalizedPathQuery
       ) {
         filteredFolders = state.s3.searchResults.folders;
         filteredFiles = state.s3.searchResults.files;
@@ -843,6 +844,8 @@ function renderObjects() {
         els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
         return;
       } else {
+        // Recover from stale/missed async state transitions by retriggering search.
+        void runS3SearchForCurrentBucket();
         els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
         return;
       }
