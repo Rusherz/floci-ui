@@ -539,7 +539,11 @@ async function runS3SearchForCurrentBucket() {
   }
 
   const bucket = getSelectedBucket();
-  if (!bucket) return;
+  if (!bucket) {
+    state.s3.searchResults = null;
+    state.s3.searchLoading = false;
+    return;
+  }
 
   const query = queryRaw.replace(/^\/+/, "");
   if (!query.includes("/")) {
@@ -1025,6 +1029,7 @@ function bindEvents() {
     } else {
       state.s3.selectedObject = null;
       state.s3.searchResults = null;
+      state.s3.searchLoading = false;
       state.s3.searchRequestId += 1;
     }
     render();
@@ -1152,6 +1157,7 @@ function bindEvents() {
       state.selectedBucket = Number(bucketEl.dataset.bucketIndex);
       state.s3.selectedObject = null;
       state.s3.searchResults = null;
+      state.s3.searchLoading = false;
       state.s3.searchRequestId += 1;
       const bucket = getSelectedBucket();
       if (bucket) {
