@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 28% 96%;
+  --foreground: 208 62% 16%;
+  --card: 0 0% 100%;
+  --card-foreground: 208 62% 16%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 208 62% 16%;
+  --primary: 189 84% 34%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 208 62% 16%;
+  --muted: 210 40% 93%;
+  --muted-foreground: 209 26% 42%;
+  --accent: 189 84% 95%;
+  --accent-foreground: 189 84% 24%;
+  --destructive: 350 70% 40%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 210 30% 86%;
+  --input: 210 30% 86%;
+  --ring: 189 84% 40%;
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: 220 45% 10%;
+  --foreground: 210 40% 95%;
+  --card: 216 41% 14%;
+  --card-foreground: 210 40% 95%;
+  --popover: 216 41% 14%;
+  --popover-foreground: 210 40% 95%;
+  --primary: 188 81% 57%;
+  --primary-foreground: 215 57% 13%;
+  --secondary: 217 34% 20%;
+  --secondary-foreground: 210 40% 95%;
+  --muted: 217 34% 18%;
+  --muted-foreground: 212 21% 69%;
+  --accent: 210 60% 18%;
+  --accent-foreground: 185 82% 72%;
+  --destructive: 339 72% 58%;
+  --destructive-foreground: 210 40% 95%;
+  --border: 215 28% 28%;
+  --input: 215 28% 28%;
+  --ring: 188 81% 57%;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  background-image: linear-gradient(140deg, hsl(210 48% 95%), hsl(210 38% 88%));
+}
+
+.dark body {
+  background-image: linear-gradient(140deg, hsl(220 45% 10%), hsl(215 44% 16%));
+}
+
+code,
+pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}

@@ -1,90 +1,61 @@
 # Floci UI
 
-Basic browser UI for navigating SQS and S3 resources from local `floci`.
+Next.js + shadcn UI for exploring SQS and S3 resources from local `floci`.
 
-## Start
+## Stack
 
-1. Ensure Floci is running on `http://localhost:4566`.
-2. Start the UI server:
+- Next.js (App Router)
+- TypeScript
+- Tailwind CSS
+- shadcn/ui components
+- Route-handler proxy for Floci (`/floci/*`)
+
+## Local Development
+
+1. Ensure Floci is running (default `http://localhost:4566`).
+2. Install dependencies:
 
 ```bash
-cd floci-ui
-node server.js
+npm install
 ```
 
-Override example:
+3. Start dev server:
 
 ```bash
-cd floci-ui
-FLOCI_ORIGIN=http://localhost:9999 PORT=4174 node server.js
+npm run dev
 ```
 
-3. Open:
+4. Open `http://localhost:4173`.
 
-- `http://localhost:4173`
+## Runtime Configuration
 
-The server proxies `/floci/*` to `http://localhost:4566`, so browser CORS is avoided.
+- `FLOCI_ORIGIN` (server env): proxy upstream target for `/floci` (default `http://localhost:4566`)
+- `PORT` (server env): runtime port for `next start` / Docker (default `4173`)
+- `NEXT_PUBLIC_FLOCI_SQS_ACCOUNT_ID` (client env): SQS account ID fallback (default `000000000000`)
+- `NEXT_PUBLIC_FLOCI_SQS_POLL_MS` (client env): SQS poll interval in ms (default `5000`)
 
-## S3 Navigation
+## Endpoints
 
-- Objects panel is now prefix-based (folder navigation), not full-bucket dump
-- `Up` and breadcrumb path support step-by-step traversal
-- Selected file supports `Open` and `Delete` actions
+- `GET /healthz` returns `{ ok: true, flociOrigin }`
+- `/floci/*` proxies to `FLOCI_ORIGIN`
 
-## SQS Polling
+## Build
 
-- Messages auto-poll every 5 seconds for the selected queue
-- Progress bar under `Messages` shows time until next poll
-- `Pause`/`Resume` button toggles polling
-- Optional override: `window.FLOCI_SQS_POLL_MS`
-
-## Verified Endpoints (No Auth)
-
-The UI uses these real Floci-compatible AWS endpoints (XML):
-
-- `POST /` with form body `Action=ListQueues&Version=2012-11-05`
-- `POST /` with form body `Action=ReceiveMessage&QueueUrl=...&MaxNumberOfMessages=10&Version=2012-11-05`
-- `GET /` (S3 ListBuckets)
-- `GET /{bucketName}?list-type=2&max-keys=200` (S3 ListObjectsV2)
-
-## Optional Overrides
-
-- `FLOCI_ORIGIN` env var for proxy target (default `http://localhost:4566`)
-- `PORT` env var for UI port (default `4173`)
-- `window.FLOCI_API_BASE_URL` in browser if you want to bypass proxy manually
-- `window.FLOCI_SQS_ACCOUNT_ID` (default `000000000000`)
-
-## Frontend Code Layout
-
-- `src/main.js`: app orchestration, event wiring, and view-level workflows
-- `src/config.js`: runtime config and initial state creation
-- `src/dom.js`: DOM element lookup
-- `src/storage.js`: theme and UI state persistence
-- `src/utils.js`: shared utility helpers
-- `src/api.js`: HTTP request client for XML endpoints
-- `src/sqs.js`: SQS-specific data loading and actions
-- `src/s3.js`: S3-specific data loading, navigation, and deletion helpers
+```bash
+npm run build
+npm run start
+```
 
 ## Docker
 
-Build locally:
+Build:
 
 ```bash
 docker build -t floci-ui:local .
 ```
 
-Run locally:
+Run:
 
 ```bash
 docker run --rm -p 4173:4173 -e FLOCI_ORIGIN=http://host.docker.internal:4566 floci-ui:local
 ```
-
-## Image Publishing
-
-A GitHub Actions workflow publishes images to GHCR:
-
-- Workflow: `.github/workflows/publish-image.yml`
-- Image: `ghcr.io/rusherz/floci-ui`
-- Triggers: pushes to `main`, tags starting with `v`, and manual dispatch
-- Runner: self-hosted (Docker must be installed and available to the runner user)
-- Version tag: derived from GitVersion `fullSemVer` (mirrors `next-core`; `+` is replaced with `.` for Docker compatibility)
