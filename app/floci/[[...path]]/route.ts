@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 export const runtime = 'nodejs';
 
 const FLOCI_ORIGIN = process.env.FLOCI_ORIGIN || 'http://localhost:4566';
+type RouteContext = { params: Promise<{ path?: string[] }> };
 
 async function proxyRequest(request: NextRequest, params?: { path?: string[] }) {
   const path = params?.path?.length ? `/${params.path.join('/')}` : '/';
@@ -33,30 +34,30 @@ async function proxyRequest(request: NextRequest, params?: { path?: string[] }) 
   });
 }
 
-export async function GET(request: NextRequest, context: { params: { path?: string[] } }) {
-  return proxyRequest(request, context.params);
+export async function GET(request: NextRequest, context: RouteContext) {
+  return proxyRequest(request, await context.params);
 }
 
-export async function POST(request: NextRequest, context: { params: { path?: string[] } }) {
-  return proxyRequest(request, context.params);
+export async function POST(request: NextRequest, context: RouteContext) {
+  return proxyRequest(request, await context.params);
 }
 
-export async function PUT(request: NextRequest, context: { params: { path?: string[] } }) {
-  return proxyRequest(request, context.params);
+export async function PUT(request: NextRequest, context: RouteContext) {
+  return proxyRequest(request, await context.params);
 }
 
-export async function PATCH(request: NextRequest, context: { params: { path?: string[] } }) {
-  return proxyRequest(request, context.params);
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  return proxyRequest(request, await context.params);
 }
 
-export async function DELETE(request: NextRequest, context: { params: { path?: string[] } }) {
-  return proxyRequest(request, context.params);
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  return proxyRequest(request, await context.params);
 }
 
-export async function OPTIONS(request: NextRequest, context: { params: { path?: string[] } }) {
-  return proxyRequest(request, context.params);
+export async function OPTIONS(request: NextRequest, context: RouteContext) {
+  return proxyRequest(request, await context.params);
 }
 
-export async function HEAD(request: NextRequest, context: { params: { path?: string[] } }) {
-  return proxyRequest(request, context.params);
+export async function HEAD(request: NextRequest, context: RouteContext) {
+  return proxyRequest(request, await context.params);
 }
