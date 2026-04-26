@@ -1,0 +1,28 @@
+export function getElements() {
+  return {
+    title: document.getElementById("view-title"),
+    navButtons: document.querySelectorAll(".nav-btn"),
+    search: document.getElementById("search-input"),
+    refreshBtn: document.getElementById("refresh-btn"),
+    themeToggleBtn: document.getElementById("theme-toggle-btn"),
+    statusBanner: document.getElementById("status-banner"),
+    sqsView: document.getElementById("sqs-view"),
+    s3View: document.getElementById("s3-view"),
+    queueList: document.getElementById("queue-list"),
+    messageList: document.getElementById("message-list"),
+    messageDetail: document.getElementById("message-detail"),
+    deleteMessageBtn: document.getElementById("delete-message-btn"),
+    pollToggleBtn: document.getElementById("poll-toggle-btn"),
+    pollProgressFill: document.getElementById("poll-progress-fill"),
+    bucketList: document.getElementById("bucket-list"),
+    objectList: document.getElementById("object-list"),
+    objectPath: document.getElementById("object-path"),
+    objectUpBtn: document.getElementById("object-up-btn"),
+    objectDetail: document.getElementById("object-detail"),
+    confirmModal: document.getElementById("confirm-modal"),
+    confirmModalTitle: document.getElementById("confirm-modal-title"),
+    confirmModalMessage: document.getElementById("confirm-modal-message"),
+    confirmModalCancel: document.getElementById("confirm-modal-cancel"),
+    confirmModalConfirm: document.getElementById("confirm-modal-confirm"),
+  };
+}

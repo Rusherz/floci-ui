@@ -54,6 +54,17 @@ The UI uses these real Floci-compatible AWS endpoints (XML):
 - `window.FLOCI_API_BASE_URL` in browser if you want to bypass proxy manually
 - `window.FLOCI_SQS_ACCOUNT_ID` (default `000000000000`)
 
+## Frontend Code Layout
+
+- `src/main.js`: app orchestration, event wiring, and view-level workflows
+- `src/config.js`: runtime config and initial state creation
+- `src/dom.js`: DOM element lookup
+- `src/storage.js`: theme and UI state persistence
+- `src/utils.js`: shared utility helpers
+- `src/api.js`: HTTP request client for XML endpoints
+- `src/sqs.js`: SQS-specific data loading and actions
+- `src/s3.js`: S3-specific data loading, navigation, and deletion helpers
+
 ## Docker
 
 Build locally:

@@ -1,151 +1,25 @@
-const API_CONFIG = {
-  baseUrl: window.FLOCI_API_BASE_URL || `${window.location.origin}/floci`,
-  sqsAccountId: window.FLOCI_SQS_ACCOUNT_ID || "000000000000",
-  sqsVersion: "2012-11-05",
-  sqsPollMs: Number(window.FLOCI_SQS_POLL_MS || 5000),
-};
-const THEME_STORAGE_KEY = "floci_theme";
-const UI_STATE_STORAGE_KEY = "floci_ui_state";
+import { API_CONFIG, STORAGE_KEYS, VIEWS, createInitialState } from "./config.js";
+import { getElements } from "./dom.js";
+import { applyLoadedUiState, applyTheme, loadUiState, persistUiState, resolveInitialTheme } from "./storage.js";
+import { createApiClient } from "./api.js";
+import { createSqsService } from "./sqs.js";
+import { createS3Service } from "./s3.js";
+import { locationKey, parentPrefix } from "./utils.js";
 
-const state = {
-  view: "sqs",
-  selectedQueue: 0,
-  selectedMessage: 0,
-  selectedBucket: 0,
-  search: "",
-  loading: false,
-  sqs: {
-    queues: [],
-    messagesByQueue: {},
-  },
-  s3: {
-    buckets: [],
-    prefixByBucket: {},
-    entriesByLocation: {},
-    selectedObject: null,
-    allKeysByBucket: {},
-    searchResults: null,
-    searchLoading: false,
-    searchRequestId: 0,
-    renderedFilesByKey: {},
-  },
-  polling: {
-    enabled: true,
-    running: false,
-    intervalMs: 5000,
-    nextPollAt: Date.now(),
-  },
-};
+const state = createInitialState();
+const els = getElements();
+const api = createApiClient(API_CONFIG);
+const sqs = createSqsService({ state, api, config: API_CONFIG });
+const s3 = createS3Service({ state, api });
 
-const els = {
-  title: document.getElementById("view-title"),
-  navButtons: document.querySelectorAll(".nav-btn"),
-  search: document.getElementById("search-input"),
-  refreshBtn: document.getElementById("refresh-btn"),
-  themeToggleBtn: document.getElementById("theme-toggle-btn"),
-  statusBanner: document.getElementById("status-banner"),
-  sqsView: document.getElementById("sqs-view"),
-  s3View: document.getElementById("s3-view"),
-  queueList: document.getElementById("queue-list"),
-  messageList: document.getElementById("message-list"),
-  messageDetail: document.getElementById("message-detail"),
-  deleteMessageBtn: document.getElementById("delete-message-btn"),
-  pollToggleBtn: document.getElementById("poll-toggle-btn"),
-  pollProgressFill: document.getElementById("poll-progress-fill"),
-  bucketList: document.getElementById("bucket-list"),
-  objectList: document.getElementById("object-list"),
-  objectPath: document.getElementById("object-path"),
-  objectUpBtn: document.getElementById("object-up-btn"),
-  objectDetail: document.getElementById("object-detail"),
-  confirmModal: document.getElementById("confirm-modal"),
-  confirmModalTitle: document.getElementById("confirm-modal-title"),
-  confirmModalMessage: document.getElementById("confirm-modal-message"),
-  confirmModalCancel: document.getElementById("confirm-modal-cancel"),
-  confirmModalConfirm: document.getElementById("confirm-modal-confirm"),
-};
-
-state.polling.intervalMs = API_CONFIG.sqsPollMs > 0 ? API_CONFIG.sqsPollMs : 5000;
-state.polling.nextPollAt = Date.now() + state.polling.intervalMs;
 let confirmResolve = null;
-
-function getStoredTheme() {
-  try {
-    const value = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return value === "dark" || value === "light" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function resolveInitialTheme() {
-  const stored = getStoredTheme();
-  if (stored) return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function applyTheme(theme) {
-  document.documentElement.setAttribute("data-theme", theme);
-  if (els.themeToggleBtn) {
-    els.themeToggleBtn.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
-  }
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // noop
-  }
-}
-
-function loadUiState() {
-  try {
-    const raw = window.sessionStorage.getItem(UI_STATE_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function applyLoadedUiState(saved) {
-  if (!saved || typeof saved !== "object") return;
-
-  if (saved.view === "sqs" || saved.view === "s3") state.view = saved.view;
-  if (typeof saved.search === "string") state.search = saved.search;
-  if (Number.isInteger(saved.selectedQueue) && saved.selectedQueue >= 0) state.selectedQueue = saved.selectedQueue;
-  if (Number.isInteger(saved.selectedMessage) && saved.selectedMessage >= 0) state.selectedMessage = saved.selectedMessage;
-  if (Number.isInteger(saved.selectedBucket) && saved.selectedBucket >= 0) state.selectedBucket = saved.selectedBucket;
-  if (saved.s3PrefixByBucket && typeof saved.s3PrefixByBucket === "object") {
-    state.s3.prefixByBucket = saved.s3PrefixByBucket;
-  }
-  if (saved.s3SelectedObject && typeof saved.s3SelectedObject === "object") {
-    state.s3.selectedObject = saved.s3SelectedObject;
-  }
-  if (typeof saved.pollingEnabled === "boolean") {
-    state.polling.enabled = saved.pollingEnabled;
-  }
-}
-
-function persistUiState() {
-  try {
-    const payload = {
-      view: state.view,
-      search: state.search,
-      selectedQueue: state.selectedQueue,
-      selectedMessage: state.selectedMessage,
-      selectedBucket: state.selectedBucket,
-      s3PrefixByBucket: state.s3.prefixByBucket,
-      s3SelectedObject: state.s3.selectedObject,
-      pollingEnabled: state.polling.enabled,
-    };
-    window.sessionStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // noop
-  }
-}
 
 function closeConfirmModal(value) {
   if (!els.confirmModal) return;
+
   els.confirmModal.classList.add("hidden");
   els.confirmModal.setAttribute("aria-hidden", "true");
+
   if (confirmResolve) {
     const resolve = confirmResolve;
     confirmResolve = null;
@@ -165,438 +39,10 @@ function confirmDialog(message, title = "Confirm") {
 
   return new Promise((resolve) => {
     confirmResolve = resolve;
-    if (els.confirmModalCancel) els.confirmModalCancel.focus();
-  });
-}
-
-function joinUrl(base, path = "") {
-  const cleanBase = base.replace(/\/$/, "");
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${cleanBase}${path ? cleanPath : ""}`;
-}
-
-function encodeS3KeyForPath(key) {
-  return key
-    .split("/")
-    .filter((segment) => segment.length > 0)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-}
-
-function parseXml(xmlText) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlText, "application/xml");
-  const parseError = doc.querySelector("parsererror");
-  if (parseError) {
-    throw new Error("Failed to parse XML response");
-  }
-  return doc;
-}
-
-function textContent(element, selector) {
-  const node = element.querySelector(selector);
-  return node ? node.textContent : "";
-}
-
-function toIsoFromEpochMs(value) {
-  const ms = Number(value);
-  if (Number.isNaN(ms) || !ms) return "";
-  return new Date(ms).toISOString();
-}
-
-function parseMaybeJson(input) {
-  try {
-    return JSON.parse(input);
-  } catch {
-    return input;
-  }
-}
-
-function locationKey(bucketName, prefix) {
-  return `${bucketName}|${prefix}`;
-}
-
-function currentPrefixForBucket(bucketName) {
-  return state.s3.prefixByBucket[bucketName] || "";
-}
-
-function setCurrentPrefix(bucketName, prefix) {
-  state.s3.prefixByBucket[bucketName] = prefix;
-}
-
-function parentPrefix(prefix) {
-  if (!prefix) return "";
-  const parts = prefix.split("/").filter(Boolean);
-  if (parts.length <= 1) return "";
-  return `${parts.slice(0, -1).join("/")}/`;
-}
-
-function objectUrl(bucketName, key) {
-  const encodedKey = encodeS3KeyForPath(key);
-  return `${joinUrl(API_CONFIG.baseUrl)}/${bucketName}/${encodedKey}`;
-}
-
-async function apiGetXml(path) {
-  const response = await fetch(joinUrl(API_CONFIG.baseUrl, path), {
-    method: "GET",
-    headers: {
-      Accept: "application/xml,text/xml,*/*",
-    },
-  });
-
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`GET ${path || "/"} failed (${response.status}): ${body.slice(0, 180)}`);
-  }
-
-  return parseXml(body);
-}
-
-async function sqsAction(action, params = {}) {
-  const body = new URLSearchParams({
-    Action: action,
-    Version: API_CONFIG.sqsVersion,
-    ...params,
-  });
-
-  const response = await fetch(joinUrl(API_CONFIG.baseUrl), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/xml,text/xml,*/*",
-    },
-    body: body.toString(),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`SQS ${action} failed (${response.status}): ${text.slice(0, 180)}`);
-  }
-
-  return parseXml(text);
-}
-
-function queueUrlToName(queueUrl) {
-  return queueUrl.split("/").filter(Boolean).pop() || queueUrl;
-}
-
-function extractQueueUrl(queueName) {
-  return `${joinUrl(API_CONFIG.baseUrl)}/${API_CONFIG.sqsAccountId}/${queueName}`;
-}
-
-function findQueueByName(queueName) {
-  return state.sqs.queues.find((queue) => queue.name === queueName) || null;
-}
-
-async function loadQueues() {
-  const doc = await sqsAction("ListQueues");
-  const urls = Array.from(doc.querySelectorAll("QueueUrl")).map((n) => n.textContent || "");
-
-  state.sqs.queues = urls.map((queueUrl) => ({
-    name: queueUrlToName(queueUrl),
-    queueUrl,
-  }));
-
-  state.sqs.messagesByQueue = {};
-}
-
-async function loadMessagesForQueue(queueName, options = {}) {
-  if (!queueName) return;
-  if (state.sqs.messagesByQueue[queueName] && !options.force) return;
-
-  const queue = findQueueByName(queueName);
-  const queueUrl = queue?.queueUrl || extractQueueUrl(queueName);
-  const doc = await sqsAction("ReceiveMessage", {
-    QueueUrl: queueUrl,
-    MaxNumberOfMessages: "10",
-    VisibilityTimeout: "0",
-    WaitTimeSeconds: "0",
-    "AttributeName.1": "All",
-    "MessageAttributeName.1": "All",
-  });
-
-  const messages = Array.from(doc.querySelectorAll("ReceiveMessageResult > Message")).map((messageNode) => {
-    const messageId = textContent(messageNode, "MessageId") || "unknown-message";
-    const body = textContent(messageNode, "Body");
-    const sentTimestamp = Array.from(messageNode.querySelectorAll("Attribute")).find((attr) => {
-      return textContent(attr, "Name") === "SentTimestamp";
-    });
-
-    const attrs = Array.from(messageNode.querySelectorAll("Attribute")).reduce((acc, attr) => {
-      const key = textContent(attr, "Name");
-      const value = textContent(attr, "Value");
-      if (key) acc[key] = value;
-      return acc;
-    }, {});
-
-    return {
-      id: messageId,
-      sentAt: toIsoFromEpochMs(sentTimestamp ? textContent(sentTimestamp, "Value") : ""),
-      body: parseMaybeJson(body),
-      raw: {
-        messageId,
-        receiptHandle: textContent(messageNode, "ReceiptHandle"),
-        attributes: attrs,
-        md5OfBody: textContent(messageNode, "MD5OfBody"),
-      },
-    };
-  });
-
-  state.sqs.messagesByQueue[queueName] = messages;
-}
-
-async function deleteMessage(queueName, receiptHandle) {
-  const queue = findQueueByName(queueName);
-  const queueUrl = queue?.queueUrl || extractQueueUrl(queueName);
-
-  const response = await sqsAction("DeleteMessage", {
-    QueueUrl: queueUrl,
-    ReceiptHandle: receiptHandle,
-  });
-
-  return response;
-}
-
-async function loadBuckets() {
-  const doc = await apiGetXml("");
-  const buckets = Array.from(doc.querySelectorAll("Buckets > Bucket")).map((bucketNode) => ({
-    name: textContent(bucketNode, "Name"),
-    region: "ca-central-1",
-    creationDate: textContent(bucketNode, "CreationDate"),
-  }));
-
-  state.s3.buckets = buckets;
-  state.s3.entriesByLocation = {};
-  state.s3.selectedObject = null;
-  state.s3.allKeysByBucket = {};
-  state.s3.searchResults = null;
-  state.s3.searchLoading = false;
-  state.s3.searchRequestId = 0;
-
-  for (const bucket of buckets) {
-    if (state.s3.prefixByBucket[bucket.name] === undefined) {
-      state.s3.prefixByBucket[bucket.name] = "";
+    if (els.confirmModalCancel) {
+      els.confirmModalCancel.focus();
     }
-  }
-}
-
-async function loadObjectsForBucketPrefix(bucketName, prefix) {
-  if (!bucketName) return;
-  const cacheKey = locationKey(bucketName, prefix);
-  if (state.s3.entriesByLocation[cacheKey]) return;
-
-  const query = new URLSearchParams({
-    "list-type": "2",
-    delimiter: "/",
-    "max-keys": "200",
   });
-  if (prefix) query.set("prefix", prefix);
-
-  const doc = await apiGetXml(`/${bucketName}?${query.toString()}`);
-
-  const folders = Array.from(doc.querySelectorAll("ListBucketResult > CommonPrefixes > Prefix")).map((node) => {
-    const fullPrefix = node.textContent || "";
-    const relativeName = fullPrefix.replace(prefix, "").replace(/\/$/, "");
-    return {
-      type: "folder",
-      name: relativeName || fullPrefix,
-      prefix: fullPrefix,
-    };
-  });
-
-  const files = Array.from(doc.querySelectorAll("ListBucketResult > Contents"))
-    .map((objectNode) => {
-      const key = textContent(objectNode, "Key");
-      if (!key || key === prefix) return null;
-      const relativeName = prefix && key.startsWith(prefix) ? key.slice(prefix.length) : key;
-      if (relativeName.includes("/")) return null;
-
-      return {
-        type: "file",
-        key,
-        name: relativeName || key,
-        size: textContent(objectNode, "Size"),
-        lastModified: textContent(objectNode, "LastModified"),
-        etag: textContent(objectNode, "ETag"),
-      };
-    })
-    .filter(Boolean);
-
-  state.s3.entriesByLocation[cacheKey] = { folders, files };
-}
-
-async function deleteObject(bucketName, key) {
-  const response = await fetch(objectUrl(bucketName, key), {
-    method: "DELETE",
-  });
-
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`Delete failed (${response.status}): ${body.slice(0, 180)}`);
-  }
-}
-
-async function listAllKeysForPrefix(bucketName, prefix) {
-  if (!prefix && Array.isArray(state.s3.allKeysByBucket[bucketName])) {
-    return state.s3.allKeysByBucket[bucketName];
-  }
-
-  const keys = [];
-  let continuationToken = "";
-
-  while (true) {
-    const query = new URLSearchParams({
-      "list-type": "2",
-      "max-keys": "1000",
-      prefix,
-    });
-    if (continuationToken) query.set("continuation-token", continuationToken);
-
-    const doc = await apiGetXml(`/${bucketName}?${query.toString()}`);
-    const pageKeys = Array.from(doc.querySelectorAll("ListBucketResult > Contents > Key"))
-      .map((node) => node.textContent || "")
-      .filter(Boolean);
-    keys.push(...pageKeys);
-
-    const isTruncated = (textContent(doc, "ListBucketResult > IsTruncated") || "").toLowerCase() === "true";
-    if (!isTruncated) break;
-
-    continuationToken = textContent(doc, "ListBucketResult > NextContinuationToken");
-    if (!continuationToken) break;
-  }
-
-  if (!prefix) {
-    state.s3.allKeysByBucket[bucketName] = keys;
-  }
-
-  return keys;
-}
-
-async function deleteFolderPrefix(bucketName, prefix) {
-  const keys = await listAllKeysForPrefix(bucketName, prefix);
-  for (const key of keys) {
-    await deleteObject(bucketName, key);
-  }
-  return keys.length;
-}
-
-function clearBucketCache(bucketName) {
-  const bucketPrefix = `${bucketName}|`;
-  for (const key of Object.keys(state.s3.entriesByLocation)) {
-    if (key.startsWith(bucketPrefix)) {
-      delete state.s3.entriesByLocation[key];
-    }
-  }
-  delete state.s3.allKeysByBucket[bucketName];
-}
-
-function buildFolderEntriesFromKeys(keys, prefix = "") {
-  const folders = new Set();
-
-  for (const key of keys) {
-    const parts = key.split("/").filter(Boolean);
-    if (parts.length <= 1) continue;
-
-    let running = "";
-    for (let i = 0; i < parts.length - 1; i += 1) {
-      running += `${parts[i]}/`;
-      folders.add(running);
-    }
-  }
-
-  return Array.from(folders)
-    .filter((folderPrefix) => !prefix || folderPrefix.startsWith(prefix))
-    .map((folderPrefix) => {
-      const relative = prefix ? folderPrefix.slice(prefix.length) : folderPrefix;
-      const name = relative.replace(/\/$/, "").split("/").filter(Boolean).pop() || folderPrefix;
-      return {
-        type: "folder",
-        name,
-        prefix: folderPrefix,
-      };
-    });
-}
-
-function buildFileEntry(bucketName, key, rootPrefix = "") {
-  const relative = rootPrefix && key.startsWith(rootPrefix) ? key.slice(rootPrefix.length) : key;
-  return {
-    type: "file",
-    bucket: bucketName,
-    key,
-    name: relative || key,
-    size: "",
-    lastModified: "",
-    etag: "",
-  };
-}
-
-async function runS3SearchForCurrentBucket() {
-  const queryRaw = state.search.trim();
-  if (!queryRaw || state.view !== "s3") {
-    state.s3.searchResults = null;
-    state.s3.searchLoading = false;
-    return;
-  }
-
-  const bucket = getSelectedBucket();
-  if (!bucket) {
-    state.s3.searchResults = null;
-    state.s3.searchLoading = false;
-    return;
-  }
-
-  const query = queryRaw.replace(/^\/+/, "");
-  if (!query.includes("/")) {
-    state.s3.searchResults = null;
-    state.s3.searchLoading = false;
-    return;
-  }
-  const queryLower = query.toLowerCase();
-  const thisReq = ++state.s3.searchRequestId;
-  state.s3.searchLoading = true;
-  render();
-
-  try {
-    let folders = [];
-    let files = [];
-
-    if (query.endsWith("/")) {
-      // Prefix mode: show only immediate children under the prefix.
-      await loadObjectsForBucketPrefix(bucket.name, query);
-      const listing = state.s3.entriesByLocation[locationKey(bucket.name, query)] || { folders: [], files: [] };
-      folders = listing.folders;
-      files = listing.files;
-    } else {
-      // Path filter mode: search only immediate children under the parent prefix.
-      const slashIdx = query.lastIndexOf("/");
-      const parentPrefix = slashIdx >= 0 ? query.slice(0, slashIdx + 1) : "";
-      const leaf = slashIdx >= 0 ? query.slice(slashIdx + 1) : query;
-      const leafLower = leaf.toLowerCase();
-
-      await loadObjectsForBucketPrefix(bucket.name, parentPrefix);
-      const listing = state.s3.entriesByLocation[locationKey(bucket.name, parentPrefix)] || { folders: [], files: [] };
-
-      folders = listing.folders.filter((folder) => folder.name.toLowerCase().startsWith(leafLower));
-      files = listing.files.filter((file) => file.name.toLowerCase().startsWith(leafLower));
-    }
-
-    if (thisReq !== state.s3.searchRequestId) return;
-
-    state.s3.searchResults = {
-      bucket: bucket.name,
-      query,
-      folders,
-      files,
-    };
-  } catch (error) {
-    if (thisReq !== state.s3.searchRequestId) return;
-    setStatus(error.message, "error");
-  } finally {
-    if (thisReq === state.s3.searchRequestId) {
-      state.s3.searchLoading = false;
-      render();
-    }
-  }
 }
 
 function setStatus(message, type = "info") {
@@ -612,7 +58,17 @@ function setStatus(message, type = "info") {
 
 function setLoading(value) {
   state.loading = value;
-  els.refreshBtn.disabled = value;
+  if (els.refreshBtn) {
+    els.refreshBtn.disabled = value;
+  }
+}
+
+function clearS3SearchState({ incrementRequestId = false } = {}) {
+  state.s3.searchResults = null;
+  state.s3.searchLoading = false;
+  if (incrementRequestId) {
+    state.s3.searchRequestId += 1;
+  }
 }
 
 function scheduleNextPoll() {
@@ -621,20 +77,16 @@ function scheduleNextPoll() {
 
 function setPollingEnabled(enabled) {
   state.polling.enabled = enabled;
-  if (enabled) scheduleNextPoll();
-  renderPollingUi();
-}
-
-function renderPollingUi() {
-  if (els.pollToggleBtn) {
-    els.pollToggleBtn.textContent = state.polling.enabled ? "Pause" : "Resume";
+  if (enabled) {
+    scheduleNextPoll();
   }
-  updatePollingProgress();
+  renderPollingUi();
 }
 
 function updatePollingProgress() {
   if (!els.pollProgressFill) return;
-  if (!state.polling.enabled || state.view !== "sqs") {
+
+  if (!state.polling.enabled || state.view !== VIEWS.sqs) {
     els.pollProgressFill.style.width = "0%";
     return;
   }
@@ -645,65 +97,19 @@ function updatePollingProgress() {
   els.pollProgressFill.style.width = `${clamped}%`;
 }
 
-async function pollSelectedQueue() {
-  if (state.view !== "sqs" || state.loading || state.polling.running) return;
-  const queue = getFilteredQueues()[state.selectedQueue];
-  if (!queue) return;
-
-  state.polling.running = true;
-  try {
-    await loadMessagesForQueue(queue.name, { force: true });
-    render();
-  } catch (error) {
-    setStatus(error.message, "error");
-  } finally {
-    state.polling.running = false;
-    scheduleNextPoll();
-    renderPollingUi();
+function renderPollingUi() {
+  if (els.pollToggleBtn) {
+    els.pollToggleBtn.textContent = state.polling.enabled ? "Pause" : "Resume";
   }
-}
-
-function render() {
-  const isSqs = state.view === "sqs";
-  els.title.textContent = isSqs ? "SQS Explorer" : "S3 Explorer";
-  els.sqsView.classList.toggle("hidden", !isSqs);
-  els.s3View.classList.toggle("hidden", isSqs);
-
-  els.navButtons.forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.view === state.view);
-  });
-
-  if (isSqs) {
-    renderQueues();
-    renderMessages();
-    renderMessageDetail();
-  } else {
-    renderBuckets();
-    renderObjects();
-    renderObjectDetail();
-  }
-
-  renderPollingUi();
-  persistUiState();
-}
-
-function textMatch(value) {
-  return String(value).toLowerCase().includes(state.search.toLowerCase());
+  updatePollingProgress();
 }
 
 function getFilteredQueues() {
-  return state.sqs.queues.filter((q) => textMatch(q.name));
-}
-
-function getFilteredBuckets() {
-  return state.s3.buckets;
+  return sqs.getFilteredQueues(state.search);
 }
 
 function getSelectedBucket() {
-  const buckets = getFilteredBuckets();
-  if (!buckets.length) return null;
-  state.selectedBucket = Math.min(state.selectedBucket, buckets.length - 1);
-  return buckets[state.selectedBucket];
+  return s3.getSelectedBucket();
 }
 
 function renderQueues() {
@@ -715,18 +121,17 @@ function renderQueues() {
     return;
   }
 
-  state.selectedQueue = Math.min(state.selectedQueue, queues.length - 1);
+  state.selectedQueue = Math.max(0, Math.min(state.selectedQueue, queues.length - 1));
   els.queueList.innerHTML = queues
     .map((queue, index) => {
       const isActive = index === state.selectedQueue ? "active" : "";
-      return `<li class=\"list-item ${isActive}\" data-queue-index=\"${index}\">${queue.name}</li>`;
+      return `<li class="list-item ${isActive}" data-queue-index="${index}">${queue.name}</li>`;
     })
     .join("");
 }
 
 function renderMessages() {
-  const queues = getFilteredQueues();
-  const queue = queues[state.selectedQueue];
+  const queue = getFilteredQueues()[state.selectedQueue];
   const messages = queue ? state.sqs.messagesByQueue[queue.name] || [] : [];
 
   if (!queue || !messages.length) {
@@ -734,19 +139,18 @@ function renderMessages() {
     return;
   }
 
-  state.selectedMessage = Math.min(state.selectedMessage, messages.length - 1);
+  state.selectedMessage = Math.max(0, Math.min(state.selectedMessage, messages.length - 1));
   els.messageList.innerHTML = messages
-    .map((msg, index) => {
+    .map((message, index) => {
       const isActive = index === state.selectedMessage ? "active" : "";
-      const ts = msg.sentAt ? `<br /><small>${msg.sentAt}</small>` : "";
-      return `<li class=\"list-item ${isActive}\" data-message-index=\"${index}\">${msg.id}${ts}</li>`;
+      const sentAt = message.sentAt ? `<br /><small>${message.sentAt}</small>` : "";
+      return `<li class="list-item ${isActive}" data-message-index="${index}">${message.id}${sentAt}</li>`;
     })
     .join("");
 }
 
 function renderMessageDetail() {
-  const queues = getFilteredQueues();
-  const queue = queues[state.selectedQueue];
+  const queue = getFilteredQueues()[state.selectedQueue];
   const messages = queue ? state.sqs.messagesByQueue[queue.name] || [] : [];
   const message = messages[state.selectedMessage];
 
@@ -763,7 +167,7 @@ function renderMessageDetail() {
   els.messageDetail.textContent = JSON.stringify(
     {
       queue: queue.name,
-      queueUrl: queue.queueUrl || extractQueueUrl(queue.name),
+      queueUrl: queue.queueUrl || sqs.extractQueueUrl(queue.name),
       message,
     },
     null,
@@ -772,22 +176,26 @@ function renderMessageDetail() {
 }
 
 function renderBuckets() {
-  const buckets = getFilteredBuckets();
+  const buckets = s3.getFilteredBuckets();
   if (!buckets.length) {
     els.bucketList.innerHTML = '<li class="list-empty">No buckets found.</li>';
     els.objectList.innerHTML = '<li class="list-empty">No objects available.</li>';
     els.objectDetail.textContent = "Select an object.";
-    if (els.objectPath) els.objectPath.textContent = "";
-    if (els.objectUpBtn) els.objectUpBtn.disabled = true;
+    if (els.objectPath) {
+      els.objectPath.textContent = "";
+    }
+    if (els.objectUpBtn) {
+      els.objectUpBtn.disabled = true;
+    }
     return;
   }
 
-  state.selectedBucket = Math.min(state.selectedBucket, buckets.length - 1);
+  state.selectedBucket = Math.max(0, Math.min(state.selectedBucket, buckets.length - 1));
   els.bucketList.innerHTML = buckets
     .map((bucket, index) => {
       const isActive = index === state.selectedBucket ? "active" : "";
       const region = bucket.region ? `<br /><small>${bucket.region}</small>` : "";
-      return `<li class=\"list-item ${isActive}\" data-bucket-index=\"${index}\">${bucket.name}${region}</li>`;
+      return `<li class="list-item ${isActive}" data-bucket-index="${index}">${bucket.name}${region}</li>`;
     })
     .join("");
 }
@@ -803,11 +211,11 @@ function renderObjectPath(prefix) {
   const parts = prefix.split("/").filter(Boolean);
   const chunks = ['<button class="path-link" type="button" data-path-prefix="">root</button>'];
 
-  let running = "";
+  let runningPrefix = "";
   for (const part of parts) {
-    running += `${part}/`;
+    runningPrefix += `${part}/`;
     chunks.push(" /");
-    chunks.push(`<button class=\"path-link\" type=\"button\" data-path-prefix=\"${running}\">${part}</button>`);
+    chunks.push(`<button class="path-link" type="button" data-path-prefix="${runningPrefix}">${part}</button>`);
   }
 
   els.objectPath.innerHTML = chunks.join(" ");
@@ -820,7 +228,7 @@ function renderObjects() {
     return;
   }
 
-  const prefix = currentPrefixForBucket(bucket.name);
+  const prefix = s3.currentPrefixForBucket(bucket.name);
   const listing = state.s3.entriesByLocation[locationKey(bucket.name, prefix)] || { folders: [], files: [] };
 
   renderObjectPath(prefix);
@@ -832,6 +240,7 @@ function renderObjects() {
   const searchTerm = state.search.trim();
   const normalizedPathQuery = searchTerm.replace(/^\/+/, "");
   const isPathSearch = normalizedPathQuery.includes("/");
+
   let filteredFolders = listing.folders;
   let filteredFiles = listing.files;
 
@@ -848,15 +257,14 @@ function renderObjects() {
         els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
         return;
       } else {
-        // Recover from stale/missed async state transitions by retriggering search.
         void runS3SearchForCurrentBucket();
         els.objectList.innerHTML = '<li class="list-empty">Searching…</li>';
         return;
       }
     } else {
-      const q = searchTerm.toLowerCase();
-      filteredFolders = listing.folders.filter((folder) => folder.name.toLowerCase().startsWith(q));
-      filteredFiles = listing.files.filter((file) => file.name.toLowerCase().startsWith(q));
+      const query = searchTerm.toLowerCase();
+      filteredFolders = listing.folders.filter((folder) => folder.name.toLowerCase().startsWith(query));
+      filteredFiles = listing.files.filter((file) => file.name.toLowerCase().startsWith(query));
     }
   }
 
@@ -874,7 +282,7 @@ function renderObjects() {
 
   const folderRows = filteredFolders.map(
     (folder) =>
-      `<li class=\"list-item folder\" data-folder-prefix=\"${folder.prefix}\"><div class=\"s3-row\"><span class=\"s3-row-main\">📁 ${folder.name}</span><span class=\"s3-row-actions\"><button class=\"path-btn danger row-action-btn\" type=\"button\" data-delete-folder-prefix=\"${folder.prefix}\">Delete</button></span></div></li>`
+      `<li class="list-item folder" data-folder-prefix="${folder.prefix}"><div class="s3-row"><span class="s3-row-main">📁 ${folder.name}</span><span class="s3-row-actions"><button class="path-btn danger row-action-btn" type="button" data-delete-folder-prefix="${folder.prefix}">Delete</button></span></div></li>`
   );
 
   const fileRows = filteredFiles.map((file, index) => {
@@ -885,15 +293,15 @@ function renderObjects() {
         ? "active"
         : "";
 
-    return `<li class=\"list-item ${isActive}\" data-file-index=\"${index}\" data-file-key=\"${file.key}\"><div class=\"s3-row\"><span class=\"s3-row-main\">📄 ${file.name}</span><span class=\"s3-row-actions\"><button class=\"path-btn row-action-btn\" type=\"button\" data-open-file-key=\"${file.key}\">Open</button><button class=\"path-btn danger row-action-btn\" type=\"button\" data-delete-file-key=\"${file.key}\">Delete</button></span></div></li>`;
+    return `<li class="list-item ${isActive}" data-file-index="${index}" data-file-key="${file.key}"><div class="s3-row"><span class="s3-row-main">📄 ${file.name}</span><span class="s3-row-actions"><button class="path-btn row-action-btn" type="button" data-open-file-key="${file.key}">Open</button><button class="path-btn danger row-action-btn" type="button" data-delete-file-key="${file.key}">Delete</button></span></div></li>`;
   });
 
   els.objectList.innerHTML = [...folderRows, ...fileRows].join("");
 }
 
 function renderObjectDetail() {
-  const selected = state.s3.selectedObject;
-  const hasObject = Boolean(selected && selected.key);
+  const selectedObject = state.s3.selectedObject;
+  const hasObject = Boolean(selectedObject && selectedObject.key);
 
   if (!hasObject) {
     els.objectDetail.textContent = "Select an object.";
@@ -902,55 +310,150 @@ function renderObjectDetail() {
 
   els.objectDetail.textContent = JSON.stringify(
     {
-      bucket: selected.bucket,
+      bucket: selectedObject.bucket,
       object: {
-        key: selected.key,
-        size: selected.size,
-        lastModified: selected.lastModified,
-        etag: selected.etag,
+        key: selectedObject.key,
+        size: selectedObject.size,
+        lastModified: selectedObject.lastModified,
+        etag: selectedObject.etag,
       },
-      objectUrl: objectUrl(selected.bucket, selected.key),
+      objectUrl: api.objectUrl(selectedObject.bucket, selectedObject.key),
     },
     null,
     2
   );
 }
 
+function render() {
+  const isSqsView = state.view === VIEWS.sqs;
+
+  els.title.textContent = isSqsView ? "SQS Explorer" : "S3 Explorer";
+  els.sqsView.classList.toggle("hidden", !isSqsView);
+  els.s3View.classList.toggle("hidden", isSqsView);
+
+  els.navButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === state.view);
+  });
+
+  if (isSqsView) {
+    renderQueues();
+    renderMessages();
+    renderMessageDetail();
+  } else {
+    renderBuckets();
+    renderObjects();
+    renderObjectDetail();
+  }
+
+  renderPollingUi();
+  persistUiState(state, STORAGE_KEYS.uiState);
+}
+
+async function runS3SearchForCurrentBucket() {
+  const queryRaw = state.search.trim();
+  if (!queryRaw || state.view !== VIEWS.s3) {
+    clearS3SearchState();
+    return;
+  }
+
+  const bucket = getSelectedBucket();
+  if (!bucket) {
+    clearS3SearchState();
+    return;
+  }
+
+  const query = queryRaw.replace(/^\/+/, "");
+  if (!query.includes("/")) {
+    clearS3SearchState();
+    return;
+  }
+
+  const requestId = ++state.s3.searchRequestId;
+  state.s3.searchLoading = true;
+  render();
+
+  try {
+    let folders = [];
+    let files = [];
+
+    if (query.endsWith("/")) {
+      await s3.loadObjectsForBucketPrefix(bucket.name, query);
+      const listing = s3.getListing(bucket.name, query);
+      folders = listing.folders;
+      files = listing.files;
+    } else {
+      const slashIndex = query.lastIndexOf("/");
+      const parent = slashIndex >= 0 ? query.slice(0, slashIndex + 1) : "";
+      const leaf = slashIndex >= 0 ? query.slice(slashIndex + 1) : query;
+      const leafLower = leaf.toLowerCase();
+
+      await s3.loadObjectsForBucketPrefix(bucket.name, parent);
+      const listing = s3.getListing(bucket.name, parent);
+
+      folders = listing.folders.filter((folder) => folder.name.toLowerCase().startsWith(leafLower));
+      files = listing.files.filter((file) => file.name.toLowerCase().startsWith(leafLower));
+    }
+
+    if (requestId !== state.s3.searchRequestId) {
+      return;
+    }
+
+    state.s3.searchResults = {
+      bucket: bucket.name,
+      query,
+      folders,
+      files,
+    };
+  } catch (error) {
+    if (requestId !== state.s3.searchRequestId) {
+      return;
+    }
+    setStatus(error.message, "error");
+  } finally {
+    if (requestId === state.s3.searchRequestId) {
+      state.s3.searchLoading = false;
+      render();
+    }
+  }
+}
+
 async function refreshCurrentView() {
   try {
     setLoading(true);
-    setStatus(state.view === "sqs" ? "Loading SQS data..." : "Loading S3 data...", "info");
+    setStatus(state.view === VIEWS.sqs ? "Loading SQS data..." : "Loading S3 data...", "info");
 
-    if (state.view === "sqs") {
-      await loadQueues();
+    if (state.view === VIEWS.sqs) {
+      await sqs.loadQueues();
       const queues = getFilteredQueues();
+
       if (queues.length) {
-        state.selectedQueue = Math.min(state.selectedQueue, queues.length - 1);
-        const queue = queues[state.selectedQueue];
-        await loadMessagesForQueue(queue.name, { force: true });
-        const messages = state.sqs.messagesByQueue[queue.name] || [];
-        state.selectedMessage = messages.length ? Math.min(state.selectedMessage, messages.length - 1) : 0;
+        state.selectedQueue = Math.max(0, Math.min(state.selectedQueue, queues.length - 1));
+        const selectedQueue = queues[state.selectedQueue];
+        await sqs.loadMessagesForQueue(selectedQueue.name, { force: true });
+
+        const messages = state.sqs.messagesByQueue[selectedQueue.name] || [];
+        state.selectedMessage = messages.length ? Math.max(0, Math.min(state.selectedMessage, messages.length - 1)) : 0;
       } else {
         state.selectedQueue = 0;
         state.selectedMessage = 0;
       }
+
       scheduleNextPoll();
       setStatus(`Loaded ${state.sqs.queues.length} queue(s).`, "info");
-    } else {
-      await loadBuckets();
-      const buckets = getFilteredBuckets();
-      if (buckets.length) {
-        state.selectedBucket = Math.min(state.selectedBucket, buckets.length - 1);
-      } else {
-        state.selectedBucket = 0;
-      }
-      const bucket = buckets[state.selectedBucket];
-      if (bucket) {
-        const prefix = currentPrefixForBucket(bucket.name);
-        await loadObjectsForBucketPrefix(bucket.name, prefix);
-      }
-      setStatus(`Loaded ${state.s3.buckets.length} bucket(s).`, "info");
+      return;
     }
+
+    await s3.loadBuckets();
+    const buckets = s3.getFilteredBuckets();
+    state.selectedBucket = buckets.length ? Math.max(0, Math.min(state.selectedBucket, buckets.length - 1)) : 0;
+
+    const bucket = buckets[state.selectedBucket];
+    if (bucket) {
+      const prefix = s3.currentPrefixForBucket(bucket.name);
+      await s3.loadObjectsForBucketPrefix(bucket.name, prefix);
+    }
+
+    setStatus(`Loaded ${state.s3.buckets.length} bucket(s).`, "info");
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -960,12 +463,12 @@ async function refreshCurrentView() {
 }
 
 async function ensureMessagesLoadedForSelection() {
-  const queue = getFilteredQueues()[state.selectedQueue];
-  if (!queue) return;
+  const selectedQueue = getFilteredQueues()[state.selectedQueue];
+  if (!selectedQueue) return;
 
   try {
     setLoading(true);
-    await loadMessagesForQueue(queue.name);
+    await sqs.loadMessagesForQueue(selectedQueue.name);
     render();
   } catch (error) {
     setStatus(error.message, "error");
@@ -978,11 +481,11 @@ async function ensureObjectsLoadedForSelection() {
   const bucket = getSelectedBucket();
   if (!bucket) return;
 
-  const prefix = currentPrefixForBucket(bucket.name);
+  const prefix = s3.currentPrefixForBucket(bucket.name);
 
   try {
     setLoading(true);
-    await loadObjectsForBucketPrefix(bucket.name, prefix);
+    await s3.loadObjectsForBucketPrefix(bucket.name, prefix);
     render();
   } catch (error) {
     setStatus(error.message, "error");
@@ -997,9 +500,9 @@ async function navigateToPrefix(prefix) {
 
   try {
     setLoading(true);
-    setCurrentPrefix(bucket.name, prefix);
+    s3.setCurrentPrefix(bucket.name, prefix);
     state.s3.selectedObject = null;
-    await loadObjectsForBucketPrefix(bucket.name, prefix);
+    await s3.loadObjectsForBucketPrefix(bucket.name, prefix);
     render();
   } catch (error) {
     setStatus(error.message, "error");
@@ -1008,35 +511,209 @@ async function navigateToPrefix(prefix) {
   }
 }
 
-function bindEvents() {
-  els.navButtons.forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      if (state.view === btn.dataset.view) return;
+async function pollSelectedQueue() {
+  if (state.view !== VIEWS.sqs || state.loading || state.polling.running) return;
 
-      state.view = btn.dataset.view;
-      state.search = "";
-      els.search.value = "";
-      render();
-      await refreshCurrentView();
+  const queue = getFilteredQueues()[state.selectedQueue];
+  if (!queue) return;
+
+  state.polling.running = true;
+  try {
+    await sqs.loadMessagesForQueue(queue.name, { force: true });
+    render();
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    state.polling.running = false;
+    scheduleNextPoll();
+    renderPollingUi();
+  }
+}
+
+async function handleDeleteMessage() {
+  const queue = getFilteredQueues()[state.selectedQueue];
+  const messages = queue ? state.sqs.messagesByQueue[queue.name] || [] : [];
+  const message = messages[state.selectedMessage];
+  const initialReceiptHandle = message?.raw?.receiptHandle;
+  const messageId = message?.id;
+
+  if (!queue || !message || !initialReceiptHandle || !messageId) return;
+
+  const confirmed = await confirmDialog(`Delete message ${message.id} from ${queue.name}?`, "Delete Message");
+  if (!confirmed) return;
+
+  try {
+    setLoading(true);
+
+    // Receipt handles are ephemeral and can change on every ReceiveMessage call.
+    await sqs.loadMessagesForQueue(queue.name, { force: true });
+
+    const latestMessages = state.sqs.messagesByQueue[queue.name] || [];
+    const latestMatch = latestMessages.find((candidate) => candidate.id === messageId);
+    const freshReceiptHandle = latestMatch?.raw?.receiptHandle || initialReceiptHandle;
+
+    await sqs.deleteMessage(queue.name, freshReceiptHandle);
+    await sqs.loadMessagesForQueue(queue.name, { force: true });
+
+    state.selectedMessage = 0;
+    setStatus(`Deleted message ${message.id}`, "info");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setLoading(false);
+    render();
+  }
+}
+
+async function handleDeleteFolder(folderPrefix) {
+  const bucket = getSelectedBucket();
+  if (!bucket || !folderPrefix) return;
+
+  const confirmed = await confirmDialog(`Delete all keys under ${folderPrefix}?`, "Delete Folder");
+  if (!confirmed) return;
+
+  try {
+    setLoading(true);
+    const deletedCount = await s3.deleteFolderPrefix(bucket.name, folderPrefix);
+    s3.clearBucketCache(bucket.name);
+    state.s3.selectedObject = null;
+    await s3.loadObjectsForBucketPrefix(bucket.name, s3.currentPrefixForBucket(bucket.name));
+    setStatus(`Deleted ${deletedCount} key(s) in ${folderPrefix}`, "info");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setLoading(false);
+    render();
+  }
+}
+
+async function handleDeleteFile(key) {
+  const bucket = getSelectedBucket();
+  if (!bucket || !key) return;
+
+  const confirmed = await confirmDialog(`Delete ${key} from ${bucket.name}?`, "Delete Object");
+  if (!confirmed) return;
+
+  try {
+    setLoading(true);
+    await api.deleteObject(bucket.name, key);
+    s3.clearBucketCache(bucket.name);
+
+    if (state.s3.selectedObject?.key === key) {
+      state.s3.selectedObject = null;
+    }
+
+    const prefix = s3.currentPrefixForBucket(bucket.name);
+    await s3.loadObjectsForBucketPrefix(bucket.name, prefix);
+    setStatus(`Deleted ${key}`, "info");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setLoading(false);
+    render();
+  }
+}
+
+async function handleNavChange(nextView) {
+  if (state.view === nextView) return;
+
+  state.view = nextView;
+  state.search = "";
+  if (els.search) {
+    els.search.value = "";
+  }
+
+  render();
+  await refreshCurrentView();
+}
+
+async function handleSearchChange(value) {
+  state.search = value;
+
+  if (state.view === VIEWS.sqs) {
+    state.selectedQueue = 0;
+    state.selectedMessage = 0;
+  } else {
+    state.s3.selectedObject = null;
+    clearS3SearchState({ incrementRequestId: true });
+  }
+
+  render();
+
+  if (state.view === VIEWS.s3 && state.search.trim().includes("/")) {
+    await runS3SearchForCurrentBucket();
+  }
+}
+
+async function handleRefresh() {
+  if (state.view === VIEWS.sqs) {
+    sqs.clearMessagesCache();
+  } else {
+    state.s3.entriesByLocation = {};
+    state.s3.selectedObject = null;
+    clearS3SearchState({ incrementRequestId: true });
+  }
+
+  await refreshCurrentView();
+}
+
+function handleSelectQueue(index) {
+  state.selectedQueue = Number(index);
+  state.selectedMessage = 0;
+  render();
+  return ensureMessagesLoadedForSelection();
+}
+
+function handleSelectMessage(index) {
+  state.selectedMessage = Number(index);
+  render();
+}
+
+async function handleSelectBucket(index) {
+  state.selectedBucket = Number(index);
+  state.s3.selectedObject = null;
+  clearS3SearchState({ incrementRequestId: true });
+
+  const bucket = getSelectedBucket();
+  if (bucket && state.s3.prefixByBucket[bucket.name] === undefined) {
+    s3.setCurrentPrefix(bucket.name, "");
+  }
+
+  render();
+  await ensureObjectsLoadedForSelection();
+
+  if (state.search.trim().includes("/")) {
+    await runS3SearchForCurrentBucket();
+  }
+}
+
+function handleSelectFile(key) {
+  const bucket = getSelectedBucket();
+  if (!bucket || !key) return;
+
+  const file = state.s3.renderedFilesByKey[key];
+  if (!file) return;
+
+  state.s3.selectedObject = {
+    bucket: bucket.name,
+    ...file,
+  };
+
+  render();
+}
+
+function bindEvents() {
+  els.navButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      void handleNavChange(button.dataset.view);
     });
   });
 
-  els.search.addEventListener("input", async (event) => {
-    state.search = event.target.value;
-    if (state.view === "sqs") {
-      state.selectedQueue = 0;
-      state.selectedMessage = 0;
-    } else {
-      state.s3.selectedObject = null;
-      state.s3.searchResults = null;
-      state.s3.searchLoading = false;
-      state.s3.searchRequestId += 1;
-    }
-    render();
-    if (state.view === "s3" && state.search.trim().includes("/")) {
-      await runS3SearchForCurrentBucket();
-    }
-  });
+  if (els.search) {
+    els.search.addEventListener("input", (event) => {
+      void handleSearchChange(event.target.value);
+    });
+  }
 
   if (els.pollToggleBtn) {
     els.pollToggleBtn.addEventListener("click", () => {
@@ -1046,63 +723,27 @@ function bindEvents() {
 
   if (els.themeToggleBtn) {
     els.themeToggleBtn.addEventListener("click", () => {
-      const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
-      applyTheme(current === "dark" ? "light" : "dark");
+      const currentTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      applyTheme(els, currentTheme === "dark" ? "light" : "dark", STORAGE_KEYS.theme);
     });
   }
 
   if (els.deleteMessageBtn) {
-    els.deleteMessageBtn.addEventListener("click", async () => {
-      const queue = getFilteredQueues()[state.selectedQueue];
-      const messages = queue ? state.sqs.messagesByQueue[queue.name] || [] : [];
-      const message = messages[state.selectedMessage];
-      const initialReceiptHandle = message?.raw?.receiptHandle;
-      const messageId = message?.id;
-
-      if (!queue || !message || !initialReceiptHandle || !messageId) return;
-
-      const confirmed = await confirmDialog(`Delete message ${message.id} from ${queue.name}?`, "Delete Message");
-      if (!confirmed) return;
-
-      try {
-        setLoading(true);
-        // Receipt handles are ephemeral and can change on every ReceiveMessage call,
-        // so refresh immediately before deleting and prefer the freshest handle.
-        await loadMessagesForQueue(queue.name, { force: true });
-        const latestMessages = state.sqs.messagesByQueue[queue.name] || [];
-        const latestMatch = latestMessages.find((msg) => msg.id === messageId);
-        const freshReceiptHandle = latestMatch?.raw?.receiptHandle || initialReceiptHandle;
-
-        await deleteMessage(queue.name, freshReceiptHandle);
-        await loadMessagesForQueue(queue.name, { force: true });
-        state.selectedMessage = 0;
-        setStatus(`Deleted message ${message.id}`, "info");
-      } catch (error) {
-        setStatus(error.message, "error");
-      } finally {
-        setLoading(false);
-        render();
-      }
+    els.deleteMessageBtn.addEventListener("click", () => {
+      void handleDeleteMessage();
     });
   }
 
-  els.refreshBtn.addEventListener("click", async () => {
-    if (state.view === "sqs") {
-      state.sqs.messagesByQueue = {};
-    } else {
-      state.s3.entriesByLocation = {};
-      state.s3.selectedObject = null;
-      state.s3.searchResults = null;
-      state.s3.searchLoading = false;
-      state.s3.searchRequestId += 1;
-    }
-    await refreshCurrentView();
-  });
+  if (els.refreshBtn) {
+    els.refreshBtn.addEventListener("click", () => {
+      void handleRefresh();
+    });
+  }
 
   if (els.objectUpBtn) {
-    els.objectUpBtn.addEventListener("click", async () => {
+    els.objectUpBtn.addEventListener("click", () => {
       const nextPrefix = els.objectUpBtn.dataset.parentPrefix || "";
-      await navigateToPrefix(nextPrefix);
+      void navigateToPrefix(nextPrefix);
     });
   }
 
@@ -1115,11 +756,15 @@ function bindEvents() {
   }
 
   if (els.confirmModalCancel) {
-    els.confirmModalCancel.addEventListener("click", () => closeConfirmModal(false));
+    els.confirmModalCancel.addEventListener("click", () => {
+      closeConfirmModal(false);
+    });
   }
 
   if (els.confirmModalConfirm) {
-    els.confirmModalConfirm.addEventListener("click", () => closeConfirmModal(true));
+    els.confirmModalConfirm.addEventListener("click", () => {
+      closeConfirmModal(true);
+    });
   }
 
   document.addEventListener("keydown", (event) => {
@@ -1130,132 +775,63 @@ function bindEvents() {
 
   document.body.addEventListener("click", async (event) => {
     const queueEl = event.target.closest("[data-queue-index]");
-    const messageEl = event.target.closest("[data-message-index]");
-    const bucketEl = event.target.closest("[data-bucket-index]");
-    const openFileEl = event.target.closest("[data-open-file-key]");
-    const deleteFolderEl = event.target.closest("[data-delete-folder-prefix]");
-    const deleteFileEl = event.target.closest("[data-delete-file-key]");
-    const folderEl = event.target.closest("[data-folder-prefix]");
-    const fileEl = event.target.closest("[data-file-index]");
-    const pathEl = event.target.closest("[data-path-prefix]");
-
     if (queueEl) {
-      state.selectedQueue = Number(queueEl.dataset.queueIndex);
-      state.selectedMessage = 0;
-      render();
-      await ensureMessagesLoadedForSelection();
+      await handleSelectQueue(queueEl.dataset.queueIndex);
       return;
     }
 
+    const messageEl = event.target.closest("[data-message-index]");
     if (messageEl) {
-      state.selectedMessage = Number(messageEl.dataset.messageIndex);
-      render();
+      handleSelectMessage(messageEl.dataset.messageIndex);
       return;
     }
 
+    const bucketEl = event.target.closest("[data-bucket-index]");
     if (bucketEl) {
-      state.selectedBucket = Number(bucketEl.dataset.bucketIndex);
-      state.s3.selectedObject = null;
-      state.s3.searchResults = null;
-      state.s3.searchLoading = false;
-      state.s3.searchRequestId += 1;
-      const bucket = getSelectedBucket();
-      if (bucket) {
-        if (state.s3.prefixByBucket[bucket.name] === undefined) {
-          setCurrentPrefix(bucket.name, "");
-        }
-      }
-      render();
-      await ensureObjectsLoadedForSelection();
-      if (state.search.trim().includes("/")) {
-        await runS3SearchForCurrentBucket();
-      }
+      await handleSelectBucket(bucketEl.dataset.bucketIndex);
       return;
     }
 
-    if (deleteFolderEl && state.view === "s3") {
-      const bucket = getSelectedBucket();
-      if (!bucket) return;
-
-      const folderPrefix = deleteFolderEl.dataset.deleteFolderPrefix || "";
-      if (!folderPrefix) return;
-
-      const confirmed = await confirmDialog(`Delete all keys under ${folderPrefix}?`, "Delete Folder");
-      if (!confirmed) return;
-
-      try {
-        setLoading(true);
-        const deletedCount = await deleteFolderPrefix(bucket.name, folderPrefix);
-        clearBucketCache(bucket.name);
-        state.s3.selectedObject = null;
-        await loadObjectsForBucketPrefix(bucket.name, currentPrefixForBucket(bucket.name));
-        setStatus(`Deleted ${deletedCount} key(s) in ${folderPrefix}`, "info");
-      } catch (error) {
-        setStatus(error.message, "error");
-      } finally {
-        setLoading(false);
-        render();
-      }
+    const deleteFolderEl = event.target.closest("[data-delete-folder-prefix]");
+    if (deleteFolderEl && state.view === VIEWS.s3) {
+      await handleDeleteFolder(deleteFolderEl.dataset.deleteFolderPrefix || "");
       return;
     }
 
-    if (deleteFileEl && state.view === "s3") {
-      const bucket = getSelectedBucket();
-      if (!bucket) return;
-      const key = deleteFileEl.dataset.deleteFileKey || "";
-      if (!key) return;
-
-      const confirmed = await confirmDialog(`Delete ${key} from ${bucket.name}?`, "Delete Object");
-      if (!confirmed) return;
-
-      try {
-        setLoading(true);
-        await deleteObject(bucket.name, key);
-        clearBucketCache(bucket.name);
-        if (state.s3.selectedObject?.key === key) state.s3.selectedObject = null;
-        const prefix = currentPrefixForBucket(bucket.name);
-        await loadObjectsForBucketPrefix(bucket.name, prefix);
-        setStatus(`Deleted ${key}`, "info");
-      } catch (error) {
-        setStatus(error.message, "error");
-      } finally {
-        setLoading(false);
-        render();
-      }
+    const deleteFileEl = event.target.closest("[data-delete-file-key]");
+    if (deleteFileEl && state.view === VIEWS.s3) {
+      await handleDeleteFile(deleteFileEl.dataset.deleteFileKey || "");
       return;
     }
 
-    if (openFileEl && state.view === "s3") {
+    const openFileEl = event.target.closest("[data-open-file-key]");
+    if (openFileEl && state.view === VIEWS.s3) {
       const bucket = getSelectedBucket();
       if (!bucket) return;
+
       const key = openFileEl.dataset.openFileKey || "";
       if (!key) return;
-      window.open(objectUrl(bucket.name, key), "_blank", "noopener");
+
+      window.open(api.objectUrl(bucket.name, key), "_blank", "noopener");
       return;
     }
 
-    if (pathEl && state.view === "s3") {
+    const pathEl = event.target.closest("[data-path-prefix]");
+    if (pathEl && state.view === VIEWS.s3) {
       await navigateToPrefix(pathEl.dataset.pathPrefix || "");
       return;
     }
 
-    if (folderEl && state.view === "s3") {
+    const folderEl = event.target.closest("[data-folder-prefix]");
+    if (folderEl && state.view === VIEWS.s3) {
       await navigateToPrefix(folderEl.dataset.folderPrefix || "");
       return;
     }
 
-    if (fileEl && state.view === "s3") {
-      const bucket = getSelectedBucket();
-      if (!bucket) return;
+    const fileEl = event.target.closest("[data-file-index]");
+    if (fileEl && state.view === VIEWS.s3) {
       const key = fileEl.dataset.fileKey || "";
-      const file = key ? state.s3.renderedFilesByKey[key] : null;
-      if (!file) return;
-
-      state.s3.selectedObject = {
-        bucket: bucket.name,
-        ...file,
-      };
-      render();
+      handleSelectFile(key);
     }
   });
 }
@@ -1264,7 +840,7 @@ function startPollingLoop() {
   window.setInterval(async () => {
     updatePollingProgress();
 
-    if (!state.polling.enabled || state.view !== "sqs") return;
+    if (!state.polling.enabled || state.view !== VIEWS.sqs) return;
     if (state.polling.running || state.loading) return;
     if (Date.now() < state.polling.nextPollAt) return;
 
@@ -1272,13 +848,13 @@ function startPollingLoop() {
   }, 200);
 }
 
-applyLoadedUiState(loadUiState());
+applyLoadedUiState(state, loadUiState(STORAGE_KEYS.uiState));
 if (els.search) {
   els.search.value = state.search;
 }
 
 bindEvents();
-applyTheme(resolveInitialTheme());
+applyTheme(els, resolveInitialTheme(STORAGE_KEYS.theme), STORAGE_KEYS.theme);
 startPollingLoop();
 render();
 refreshCurrentView();
