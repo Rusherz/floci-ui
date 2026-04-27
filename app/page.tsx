@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Folder, Moon, RefreshCcw, Sun } from 'lucide-react';
+import { Database, ExternalLink, Folder, Moon, RefreshCcw, Sun } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,11 +16,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import { createInitialState, STORAGE_KEYS, type AppState, type FileEntry, type Queue, type View, VIEWS } from '@/lib/floci/types';
 import { applyLoadedUiState, joinUrl, loadUiState, locationKey, parentPrefix, persistUiState } from '@/lib/floci/utils';
+import { cn } from '@/lib/utils';
 
 type Banner = {
   type: 'info' | 'error' | null;
@@ -903,322 +903,350 @@ export default function HomePage() {
   }, [commitState]);
 
   return (
-    <main className='mx-auto min-h-screen max-w-[1600px] p-4 lg:p-6'>
-      <section className='grid min-h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]'>
-        <aside className='flex flex-col rounded-lg border bg-slate-900 p-4 text-slate-50 dark:bg-slate-950'>
-          <h1 className='text-2xl font-semibold tracking-tight'>Floci</h1>
-          <p className='mt-1 text-sm text-slate-300'>SQS/S3 Navigator</p>
-          <div className='mt-auto'>
-            <Button variant='secondary' className='w-full justify-start gap-2' onClick={toggleTheme}>
-              {theme === 'dark' ? <Sun className='h-4 w-4' /> : <Moon className='h-4 w-4' />}
-              {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-            </Button>
+    <main className='min-h-screen bg-background'>
+      <section className='grid min-h-screen grid-cols-1 lg:grid-cols-[240px_1fr]'>
+        <aside className='border-b bg-card lg:border-b-0 lg:border-r'>
+          <div className='flex h-full flex-col gap-6 p-4'>
+            <div className='flex flex-col gap-1'>
+              <h1 className='text-2xl font-semibold tracking-tight'>Floci</h1>
+              <p className='text-sm text-muted-foreground'>SQS/S3 Navigator</p>
+            </div>
+
+            <nav className='flex flex-col gap-2'>
+              <button
+                type='button'
+                onClick={() => void handleNavChange(VIEWS.sqs)}
+                className={cn(
+                  'flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm font-medium transition',
+                  state.view === VIEWS.sqs
+                    ? 'border-primary bg-accent text-accent-foreground'
+                    : 'border-border bg-background hover:bg-accent'
+                )}
+              >
+                <span className='flex items-center gap-2'>
+                  <Database className='size-4 shrink-0' />
+                  SQS Explorer
+                </span>
+                {state.view === VIEWS.sqs ? <Badge variant='secondary'>Active</Badge> : null}
+              </button>
+
+              <button
+                type='button'
+                onClick={() => void handleNavChange(VIEWS.s3)}
+                className={cn(
+                  'flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm font-medium transition',
+                  state.view === VIEWS.s3
+                    ? 'border-primary bg-accent text-accent-foreground'
+                    : 'border-border bg-background hover:bg-accent'
+                )}
+              >
+                <span className='flex items-center gap-2'>
+                  <Folder className='size-4 shrink-0' />
+                  S3 Explorer
+                </span>
+                {state.view === VIEWS.s3 ? <Badge variant='secondary'>Active</Badge> : null}
+              </button>
+            </nav>
+
+            <div className='mt-auto flex flex-col gap-2'>
+              <Button variant='outline' className='justify-start gap-2' onClick={toggleTheme}>
+                {theme === 'dark' ? <Sun className='size-4' /> : <Moon className='size-4' />}
+                {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+              </Button>
+              <Button variant='outline' className='justify-start gap-2' onClick={() => void handleRefresh()} disabled={state.loading}>
+                <RefreshCcw className='size-4' />
+                Refresh Data
+              </Button>
+            </div>
           </div>
         </aside>
 
-        <section className='flex flex-col gap-4'>
-          <div className='flex flex-col gap-3 rounded-lg border bg-card p-4'>
-            <div className='flex flex-col justify-between gap-3 md:flex-row md:items-center'>
-              <h2 className='text-xl font-semibold'>{state.view === VIEWS.sqs ? 'SQS Explorer' : 'S3 Explorer'}</h2>
-              <div className='flex w-full flex-col gap-2 md:w-auto md:flex-row'>
-                <Input
-                  value={state.search}
-                  onChange={(event) => {
-                    void handleSearchChange(event.target.value);
-                  }}
-                  placeholder='Search...'
-                  className='w-full md:w-[320px]'
-                />
-                <Button onClick={() => void handleRefresh()} disabled={state.loading} className='gap-2'>
-                  <RefreshCcw className='h-4 w-4' />
-                  Refresh
-                </Button>
+        <section className='flex flex-col gap-4 p-4 lg:p-6'>
+          <div className='rounded-lg border bg-card p-4'>
+            <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+              <div className='flex flex-col gap-1'>
+                <h2 className='text-xl font-semibold'>{state.view === VIEWS.sqs ? 'SQS Explorer' : 'S3 Explorer'}</h2>
+                <p className='text-sm text-muted-foreground'>
+                  {state.view === VIEWS.sqs ? 'Queue, message, and polling controls.' : 'Bucket, object, and path management.'}
+                </p>
               </div>
+              <Input
+                value={state.search}
+                onChange={(event) => {
+                  void handleSearchChange(event.target.value);
+                }}
+                placeholder={state.view === VIEWS.sqs ? 'Search queues...' : 'Search objects or path...'}
+                className='w-full md:w-[380px]'
+              />
             </div>
+          </div>
 
-            {banner.type && (
-              <div
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  banner.type === 'error'
-                    ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-900/40 dark:text-rose-200'
-                    : 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
-                }`}
-              >
-                {banner.message}
-              </div>
-            )}
+          {banner.type && (
+            <div
+              className={cn(
+                'rounded-md border px-3 py-2 text-sm',
+                banner.type === 'error' ? 'border-destructive/50 bg-destructive/10 text-destructive' : 'border-primary/40 bg-primary/10 text-primary'
+              )}
+            >
+              {banner.message}
+            </div>
+          )}
 
-            <Tabs value={state.view} onValueChange={(next) => void handleNavChange(next as View)}>
-              <TabsList>
-                <TabsTrigger value={VIEWS.sqs}>SQS</TabsTrigger>
-                <TabsTrigger value={VIEWS.s3}>S3</TabsTrigger>
-              </TabsList>
+          {state.view === VIEWS.sqs ? (
+            <div className='grid grid-cols-1 gap-4 xl:grid-cols-3'>
+              <Card className='min-h-[380px] shadow-none'>
+                <CardHeader>
+                  <CardTitle>Queues</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {!filteredQueues.length ? (
+                    <p className='text-sm text-muted-foreground'>No queues found.</p>
+                  ) : (
+                    <div className='flex flex-col gap-2'>
+                      {filteredQueues.map((queue, index) => {
+                        const active = index === clampIndex(state.selectedQueue, filteredQueues.length);
 
-              <TabsContent value={VIEWS.sqs}>
-                <div className='grid grid-cols-1 gap-4 xl:grid-cols-3'>
-                  <Card className='min-h-[380px]'>
-                    <CardHeader>
-                      <CardTitle>Queues</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {!filteredQueues.length ? (
-                        <p className='text-sm text-muted-foreground'>No queues found.</p>
-                      ) : (
-                        <div className='space-y-2'>
-                          {filteredQueues.map((queue, index) => {
-                            const active = index === clampIndex(state.selectedQueue, filteredQueues.length);
+                        return (
+                          <button
+                            key={queue.name}
+                            type='button'
+                            onClick={() => void handleSelectQueue(index)}
+                            className={cn(
+                              'w-full rounded-md border px-3 py-2 text-left text-sm transition',
+                              active ? 'border-primary bg-accent text-accent-foreground' : 'border-border bg-background hover:bg-accent'
+                            )}
+                          >
+                            {queue.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-                            return (
-                              <button
-                                key={queue.name}
-                                type='button'
-                                onClick={() => void handleSelectQueue(index)}
-                                className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                                  active
-                                    ? 'border-primary bg-accent text-accent-foreground'
-                                    : 'border-border bg-background hover:bg-accent/60'
-                                }`}
-                              >
-                                {queue.name}
-                              </button>
-                            );
-                          })}
+              <Card className='min-h-[380px] shadow-none'>
+                <CardHeader>
+                  <div className='flex items-center justify-between gap-2'>
+                    <CardTitle>Messages</CardTitle>
+                    <Button variant='outline' size='sm' onClick={togglePolling}>
+                      {state.polling.enabled ? 'Pause' : 'Resume'}
+                    </Button>
+                  </div>
+                  <Progress value={pollProgress} />
+                </CardHeader>
+                <CardContent>
+                  {!selectedQueue || !selectedQueueMessages.length ? (
+                    <p className='text-sm text-muted-foreground'>No messages available.</p>
+                  ) : (
+                    <div className='flex flex-col gap-2'>
+                      {selectedQueueMessages.map((message, index) => {
+                        const active = index === clampIndex(state.selectedMessage, selectedQueueMessages.length);
+                        return (
+                          <button
+                            key={message.id}
+                            type='button'
+                            onClick={() => handleSelectMessage(index)}
+                            className={cn(
+                              'w-full rounded-md border px-3 py-2 text-left text-sm transition',
+                              active ? 'border-primary bg-accent text-accent-foreground' : 'border-border bg-background hover:bg-accent'
+                            )}
+                          >
+                            <div>{message.id}</div>
+                            {message.sentAt && <p className='mt-1 text-xs text-muted-foreground'>{message.sentAt}</p>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className='min-h-[380px] shadow-none'>
+                <CardHeader>
+                  <div className='flex items-center justify-between gap-2'>
+                    <CardTitle>Message Detail</CardTitle>
+                    <Button
+                      variant='destructive'
+                      size='sm'
+                      onClick={() => void handleDeleteMessage()}
+                      disabled={!selectedQueue || !selectedMessage?.raw?.receiptHandle}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <pre className='max-h-[440px] overflow-auto rounded-md border bg-muted p-3 text-xs leading-5 text-muted-foreground'>
+                    {selectedQueue && selectedMessage
+                      ? JSON.stringify(
+                          {
+                            queue: selectedQueue.name,
+                            queueUrl: selectedQueue.queueUrl || extractQueueUrl(selectedQueue.name),
+                            message: selectedMessage,
+                          },
+                          null,
+                          2
+                        )
+                      : 'Select a message.'}
+                  </pre>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className='grid grid-cols-1 gap-4 xl:grid-cols-3'>
+              <Card className='min-h-[380px] shadow-none'>
+                <CardHeader>
+                  <CardTitle>Buckets</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {!state.s3.buckets.length ? (
+                    <p className='text-sm text-muted-foreground'>No buckets found.</p>
+                  ) : (
+                    <div className='flex flex-col gap-2'>
+                      {state.s3.buckets.map((bucket, index) => {
+                        const active = index === clampIndex(state.selectedBucket, state.s3.buckets.length);
+                        return (
+                          <button
+                            key={bucket.name}
+                            type='button'
+                            onClick={() => void handleSelectBucket(index)}
+                            className={cn(
+                              'w-full rounded-md border px-3 py-2 text-left text-sm transition',
+                              active ? 'border-primary bg-accent text-accent-foreground' : 'border-border bg-background hover:bg-accent'
+                            )}
+                          >
+                            <div>{bucket.name}</div>
+                            <p className='mt-1 text-xs text-muted-foreground'>{bucket.region}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className='min-h-[380px] shadow-none'>
+                <CardHeader>
+                  <CardTitle>Objects</CardTitle>
+                  <div className='flex items-center gap-2'>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      disabled={!selectedPrefix}
+                      onClick={() => void navigateToPrefix(parentPrefix(selectedPrefix))}
+                    >
+                      Up
+                    </Button>
+                    <div className='flex min-w-0 items-center gap-1 overflow-auto text-sm text-muted-foreground'>
+                      {objectPathParts.map((item, index) => (
+                        <div key={item.prefix} className='flex items-center gap-1'>
+                          {index > 0 && <span>/</span>}
+                          <button
+                            type='button'
+                            className='text-primary hover:underline'
+                            onClick={() => void navigateToPrefix(item.prefix)}
+                          >
+                            {item.label}
+                          </button>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className='min-h-[380px]'>
-                    <CardHeader>
-                      <div className='flex items-center justify-between gap-2'>
-                        <CardTitle>Messages</CardTitle>
-                        <Button variant='outline' size='sm' onClick={togglePolling}>
-                          {state.polling.enabled ? 'Pause' : 'Resume'}
-                        </Button>
-                      </div>
-                      <Progress value={pollProgress} />
-                    </CardHeader>
-                    <CardContent>
-                      {!selectedQueue || !selectedQueueMessages.length ? (
-                        <p className='text-sm text-muted-foreground'>No messages available.</p>
-                      ) : (
-                        <div className='space-y-2'>
-                          {selectedQueueMessages.map((message, index) => {
-                            const active = index === clampIndex(state.selectedMessage, selectedQueueMessages.length);
-                            return (
-                              <button
-                                key={message.id}
-                                type='button'
-                                onClick={() => handleSelectMessage(index)}
-                                className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                                  active
-                                    ? 'border-primary bg-accent text-accent-foreground'
-                                    : 'border-border bg-background hover:bg-accent/60'
-                                }`}
-                              >
-                                <div>{message.id}</div>
-                                {message.sentAt && <p className='mt-1 text-xs text-muted-foreground'>{message.sentAt}</p>}
-                              </button>
-                            );
-                          })}
+                      ))}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {objectViewModel.loading ? (
+                    <p className='text-sm text-muted-foreground'>Searching...</p>
+                  ) : !objectViewModel.folders.length && !objectViewModel.files.length ? (
+                    <p className='text-sm text-muted-foreground'>{objectViewModel.emptyMessage}</p>
+                  ) : (
+                    <div className='flex flex-col gap-2'>
+                      {objectViewModel.folders.map((folder) => (
+                        <div key={folder.prefix} className='flex items-center gap-2 rounded-md border bg-muted p-2'>
+                          <button
+                            type='button'
+                            className='flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-medium hover:text-primary'
+                            onClick={() => void navigateToPrefix(folder.prefix)}
+                          >
+                            <Folder className='size-4 shrink-0' />
+                            <span className='truncate'>{folder.name}</span>
+                          </button>
+                          <Button variant='destructive' size='sm' onClick={() => void handleDeleteFolder(folder.prefix)}>
+                            Delete
+                          </Button>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                      ))}
 
-                  <Card className='min-h-[380px]'>
-                    <CardHeader>
-                      <div className='flex items-center justify-between gap-2'>
-                        <CardTitle>Message Detail</CardTitle>
-                        <Button
-                          variant='destructive'
-                          size='sm'
-                          onClick={() => void handleDeleteMessage()}
-                          disabled={!selectedQueue || !selectedMessage?.raw?.receiptHandle}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <pre className='max-h-[440px] overflow-auto rounded-md border bg-muted/35 p-3 text-xs leading-5 text-muted-foreground'>
-                        {selectedQueue && selectedMessage
-                          ? JSON.stringify(
-                              {
-                                queue: selectedQueue.name,
-                                queueUrl: selectedQueue.queueUrl || extractQueueUrl(selectedQueue.name),
-                                message: selectedMessage,
-                              },
-                              null,
-                              2
-                            )
-                          : 'Select a message.'}
-                      </pre>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
+                      {objectViewModel.files.map((file) => {
+                        const active =
+                          state.s3.selectedObject?.bucket === selectedBucket?.name && state.s3.selectedObject?.key === file.key;
 
-              <TabsContent value={VIEWS.s3}>
-                <div className='grid grid-cols-1 gap-4 xl:grid-cols-3'>
-                  <Card className='min-h-[380px]'>
-                    <CardHeader>
-                      <CardTitle>Buckets</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {!state.s3.buckets.length ? (
-                        <p className='text-sm text-muted-foreground'>No buckets found.</p>
-                      ) : (
-                        <div className='space-y-2'>
-                          {state.s3.buckets.map((bucket, index) => {
-                            const active = index === clampIndex(state.selectedBucket, state.s3.buckets.length);
-                            return (
-                              <button
-                                key={bucket.name}
-                                type='button'
-                                onClick={() => void handleSelectBucket(index)}
-                                className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                                  active
-                                    ? 'border-primary bg-accent text-accent-foreground'
-                                    : 'border-border bg-background hover:bg-accent/60'
-                                }`}
+                        return (
+                          <div
+                            key={file.key}
+                            className={cn(
+                              'rounded-md border p-2 text-sm transition',
+                              active ? 'border-primary bg-accent text-accent-foreground' : 'bg-background hover:bg-accent'
+                            )}
+                          >
+                            <button type='button' className='w-full text-left font-medium' onClick={() => handleSelectFile(file.key)}>
+                              {file.name}
+                            </button>
+                            <div className='mt-2 flex flex-wrap gap-2'>
+                              <Button
+                                variant='outline'
+                                size='sm'
+                                className='gap-1'
+                                onClick={() => {
+                                  if (!selectedBucket) return;
+                                  window.open(api.objectUrl(selectedBucket.name, file.key), '_blank', 'noopener');
+                                }}
                               >
-                                <div>{bucket.name}</div>
-                                <p className='mt-1 text-xs text-muted-foreground'>{bucket.region}</p>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className='min-h-[380px]'>
-                    <CardHeader>
-                      <CardTitle>Objects</CardTitle>
-                      <div className='flex items-center gap-2'>
-                        <Button
-                          variant='outline'
-                          size='sm'
-                          disabled={!selectedPrefix}
-                          onClick={() => void navigateToPrefix(parentPrefix(selectedPrefix))}
-                        >
-                          Up
-                        </Button>
-                        <div className='flex min-w-0 items-center gap-1 overflow-auto text-sm text-muted-foreground'>
-                          {objectPathParts.map((item, index) => (
-                            <div key={item.prefix} className='flex items-center gap-1'>
-                              {index > 0 && <span>/</span>}
-                              <button
-                                type='button'
-                                className='text-primary hover:underline'
-                                onClick={() => void navigateToPrefix(item.prefix)}
-                              >
-                                {item.label}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      {objectViewModel.loading ? (
-                        <p className='text-sm text-muted-foreground'>Searching...</p>
-                      ) : !objectViewModel.folders.length && !objectViewModel.files.length ? (
-                        <p className='text-sm text-muted-foreground'>{objectViewModel.emptyMessage}</p>
-                      ) : (
-                        <div className='space-y-2'>
-                          {objectViewModel.folders.map((folder) => (
-                            <div key={folder.prefix} className='flex items-center gap-2 rounded-md border bg-muted/20 p-2'>
-                              <button
-                                type='button'
-                                className='flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-medium hover:text-primary'
-                                onClick={() => void navigateToPrefix(folder.prefix)}
-                              >
-                                <Folder className='h-4 w-4 shrink-0' />
-                                <span className='truncate'>{folder.name}</span>
-                              </button>
-                              <Button variant='destructive' size='sm' onClick={() => void handleDeleteFolder(folder.prefix)}>
+                                <ExternalLink className='size-3.5' />
+                                Open
+                              </Button>
+                              <Button variant='destructive' size='sm' onClick={() => void handleDeleteFile(file.key)}>
                                 Delete
                               </Button>
                             </div>
-                          ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-                          {objectViewModel.files.map((file) => {
-                            const active =
-                              state.s3.selectedObject?.bucket === selectedBucket?.name && state.s3.selectedObject?.key === file.key;
-
-                            return (
-                              <div
-                                key={file.key}
-                                className={`rounded-md border p-2 text-sm transition ${
-                                  active ? 'border-primary bg-accent text-accent-foreground' : 'bg-background hover:bg-accent/60'
-                                }`}
-                              >
-                                <button
-                                  type='button'
-                                  className='w-full text-left font-medium'
-                                  onClick={() => handleSelectFile(file.key)}
-                                >
-                                  {file.name}
-                                </button>
-                                <div className='mt-2 flex flex-wrap gap-2'>
-                                  <Button
-                                    variant='outline'
-                                    size='sm'
-                                    className='gap-1'
-                                    onClick={() => {
-                                      if (!selectedBucket) return;
-                                      window.open(api.objectUrl(selectedBucket.name, file.key), '_blank', 'noopener');
-                                    }}
-                                  >
-                                    <ExternalLink className='h-3.5 w-3.5' />
-                                    Open
-                                  </Button>
-                                  <Button variant='destructive' size='sm' onClick={() => void handleDeleteFile(file.key)}>
-                                    Delete
-                                  </Button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className='min-h-[380px]'>
-                    <CardHeader>
-                      <div className='flex items-center justify-between gap-2'>
-                        <CardTitle>Object Preview</CardTitle>
-                        {state.s3.selectedObject && <Badge variant='secondary'>{state.s3.selectedObject.name}</Badge>}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <pre className='max-h-[440px] overflow-auto rounded-md border bg-muted/35 p-3 text-xs leading-5 text-muted-foreground'>
-                        {selectedBucket && state.s3.selectedObject
-                          ? JSON.stringify(
-                              {
-                                bucket: selectedBucket.name,
-                                object: {
-                                  key: state.s3.selectedObject.key,
-                                  size: state.s3.selectedObject.size,
-                                  lastModified: state.s3.selectedObject.lastModified,
-                                  etag: state.s3.selectedObject.etag,
-                                },
-                                objectUrl: api.objectUrl(selectedBucket.name, state.s3.selectedObject.key),
-                              },
-                              null,
-                              2
-                            )
-                          : 'Select an object.'}
-                      </pre>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
+              <Card className='min-h-[380px] shadow-none'>
+                <CardHeader>
+                  <div className='flex items-center justify-between gap-2'>
+                    <CardTitle>Object Preview</CardTitle>
+                    {state.s3.selectedObject && <Badge variant='secondary'>{state.s3.selectedObject.name}</Badge>}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <pre className='max-h-[440px] overflow-auto rounded-md border bg-muted p-3 text-xs leading-5 text-muted-foreground'>
+                    {selectedBucket && state.s3.selectedObject
+                      ? JSON.stringify(
+                          {
+                            bucket: selectedBucket.name,
+                            object: {
+                              key: state.s3.selectedObject.key,
+                              size: state.s3.selectedObject.size,
+                              lastModified: state.s3.selectedObject.lastModified,
+                              etag: state.s3.selectedObject.etag,
+                            },
+                            objectUrl: api.objectUrl(selectedBucket.name, state.s3.selectedObject.key),
+                          },
+                          null,
+                          2
+                        )
+                      : 'Select an object.'}
+                  </pre>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </section>
       </section>
 
