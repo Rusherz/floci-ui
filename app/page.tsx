@@ -993,16 +993,16 @@ export default function HomePage() {
           )}
 
           {state.view === VIEWS.sqs ? (
-            <div className='grid grid-cols-1 gap-4 xl:grid-cols-3'>
-              <Card className='min-h-[380px] shadow-none'>
+            <div className='grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'>
+              <Card className='min-h-[420px] shadow-none'>
                 <CardHeader>
                   <CardTitle>Queues</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className='h-[calc(100%-4rem)]'>
                   {!filteredQueues.length ? (
                     <p className='text-sm text-muted-foreground'>No queues found.</p>
                   ) : (
-                    <div className='flex flex-col gap-2'>
+                    <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1'>
                       {filteredQueues.map((queue, index) => {
                         const active = index === clampIndex(state.selectedQueue, filteredQueues.length);
 
@@ -1025,85 +1025,87 @@ export default function HomePage() {
                 </CardContent>
               </Card>
 
-              <Card className='min-h-[380px] shadow-none'>
-                <CardHeader>
-                  <div className='flex items-center justify-between gap-2'>
-                    <CardTitle>Messages</CardTitle>
-                    <Button variant='outline' size='sm' onClick={togglePolling}>
-                      {state.polling.enabled ? 'Pause' : 'Resume'}
-                    </Button>
-                  </div>
-                  <Progress value={pollProgress} />
-                </CardHeader>
-                <CardContent>
-                  {!selectedQueue || !selectedQueueMessages.length ? (
-                    <p className='text-sm text-muted-foreground'>No messages available.</p>
-                  ) : (
-                    <div className='flex flex-col gap-2'>
-                      {selectedQueueMessages.map((message, index) => {
-                        const active = index === clampIndex(state.selectedMessage, selectedQueueMessages.length);
-                        return (
-                          <button
-                            key={message.id}
-                            type='button'
-                            onClick={() => handleSelectMessage(index)}
-                            className={cn(
-                              'w-full rounded-md border px-3 py-2 text-left text-sm transition',
-                              active ? 'border-primary bg-accent text-accent-foreground' : 'border-border bg-background hover:bg-accent'
-                            )}
-                          >
-                            <div>{message.id}</div>
-                            {message.sentAt && <p className='mt-1 text-xs text-muted-foreground'>{message.sentAt}</p>}
-                          </button>
-                        );
-                      })}
+              <div className='grid min-h-[420px] grid-cols-1 gap-4 lg:grid-rows-[minmax(240px,0.48fr)_minmax(240px,0.52fr)]'>
+                <Card className='shadow-none'>
+                  <CardHeader>
+                    <div className='flex items-center justify-between gap-2'>
+                      <CardTitle>Messages</CardTitle>
+                      <Button variant='outline' size='sm' onClick={togglePolling}>
+                        {state.polling.enabled ? 'Pause' : 'Resume'}
+                      </Button>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                    <Progress value={pollProgress} />
+                  </CardHeader>
+                  <CardContent>
+                    {!selectedQueue || !selectedQueueMessages.length ? (
+                      <p className='text-sm text-muted-foreground'>No messages available.</p>
+                    ) : (
+                      <div className='flex max-h-[260px] flex-col gap-2 overflow-auto pr-1 lg:max-h-[320px]'>
+                        {selectedQueueMessages.map((message, index) => {
+                          const active = index === clampIndex(state.selectedMessage, selectedQueueMessages.length);
+                          return (
+                            <button
+                              key={message.id}
+                              type='button'
+                              onClick={() => handleSelectMessage(index)}
+                              className={cn(
+                                'w-full rounded-md border px-3 py-2 text-left text-sm transition',
+                                active ? 'border-primary bg-accent text-accent-foreground' : 'border-border bg-background hover:bg-accent'
+                              )}
+                            >
+                              <div>{message.id}</div>
+                              {message.sentAt && <p className='mt-1 text-xs text-muted-foreground'>{message.sentAt}</p>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
 
-              <Card className='min-h-[380px] shadow-none'>
-                <CardHeader>
-                  <div className='flex items-center justify-between gap-2'>
-                    <CardTitle>Message Detail</CardTitle>
-                    <Button
-                      variant='destructive'
-                      size='sm'
-                      onClick={() => void handleDeleteMessage()}
-                      disabled={!selectedQueue || !selectedMessage?.raw?.receiptHandle}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <pre className='max-h-[440px] overflow-auto rounded-md border bg-muted p-3 text-xs leading-5 text-muted-foreground'>
-                    {selectedQueue && selectedMessage
-                      ? JSON.stringify(
-                          {
-                            queue: selectedQueue.name,
-                            queueUrl: selectedQueue.queueUrl || extractQueueUrl(selectedQueue.name),
-                            message: selectedMessage,
-                          },
-                          null,
-                          2
-                        )
-                      : 'Select a message.'}
-                  </pre>
-                </CardContent>
-              </Card>
+                <Card className='shadow-none'>
+                  <CardHeader>
+                    <div className='flex items-center justify-between gap-2'>
+                      <CardTitle>Message Detail</CardTitle>
+                      <Button
+                        variant='destructive'
+                        size='sm'
+                        onClick={() => void handleDeleteMessage()}
+                        disabled={!selectedQueue || !selectedMessage?.raw?.receiptHandle}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className='max-h-[320px] overflow-auto rounded-md border bg-muted p-3 text-xs leading-5 text-muted-foreground lg:max-h-[420px]'>
+                      {selectedQueue && selectedMessage
+                        ? JSON.stringify(
+                            {
+                              queue: selectedQueue.name,
+                              queueUrl: selectedQueue.queueUrl || extractQueueUrl(selectedQueue.name),
+                              message: selectedMessage,
+                            },
+                            null,
+                            2
+                          )
+                        : 'Select a message.'}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           ) : (
-            <div className='grid grid-cols-1 gap-4 xl:grid-cols-3'>
-              <Card className='min-h-[380px] shadow-none'>
+            <div className='grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'>
+              <Card className='min-h-[420px] shadow-none'>
                 <CardHeader>
                   <CardTitle>Buckets</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className='h-[calc(100%-4rem)]'>
                   {!state.s3.buckets.length ? (
                     <p className='text-sm text-muted-foreground'>No buckets found.</p>
                   ) : (
-                    <div className='flex flex-col gap-2'>
+                    <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1'>
                       {state.s3.buckets.map((bucket, index) => {
                         const active = index === clampIndex(state.selectedBucket, state.s3.buckets.length);
                         return (
@@ -1126,125 +1128,127 @@ export default function HomePage() {
                 </CardContent>
               </Card>
 
-              <Card className='min-h-[380px] shadow-none'>
-                <CardHeader>
-                  <CardTitle>Objects</CardTitle>
-                  <div className='flex items-center gap-2'>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      disabled={!selectedPrefix}
-                      onClick={() => void navigateToPrefix(parentPrefix(selectedPrefix))}
-                    >
-                      Up
-                    </Button>
-                    <div className='flex min-w-0 items-center gap-1 overflow-auto text-sm text-muted-foreground'>
-                      {objectPathParts.map((item, index) => (
-                        <div key={item.prefix} className='flex items-center gap-1'>
-                          {index > 0 && <span>/</span>}
-                          <button
-                            type='button'
-                            className='text-primary hover:underline'
-                            onClick={() => void navigateToPrefix(item.prefix)}
-                          >
-                            {item.label}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {objectViewModel.loading ? (
-                    <p className='text-sm text-muted-foreground'>Searching...</p>
-                  ) : !objectViewModel.folders.length && !objectViewModel.files.length ? (
-                    <p className='text-sm text-muted-foreground'>{objectViewModel.emptyMessage}</p>
-                  ) : (
-                    <div className='flex flex-col gap-2'>
-                      {objectViewModel.folders.map((folder) => (
-                        <div key={folder.prefix} className='flex items-center gap-2 rounded-md border bg-muted p-2'>
-                          <button
-                            type='button'
-                            className='flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-medium hover:text-primary'
-                            onClick={() => void navigateToPrefix(folder.prefix)}
-                          >
-                            <Folder className='size-4 shrink-0' />
-                            <span className='truncate'>{folder.name}</span>
-                          </button>
-                          <Button variant='destructive' size='sm' onClick={() => void handleDeleteFolder(folder.prefix)}>
-                            Delete
-                          </Button>
-                        </div>
-                      ))}
-
-                      {objectViewModel.files.map((file) => {
-                        const active =
-                          state.s3.selectedObject?.bucket === selectedBucket?.name && state.s3.selectedObject?.key === file.key;
-
-                        return (
-                          <div
-                            key={file.key}
-                            className={cn(
-                              'rounded-md border p-2 text-sm transition',
-                              active ? 'border-primary bg-accent text-accent-foreground' : 'bg-background hover:bg-accent'
-                            )}
-                          >
-                            <button type='button' className='w-full text-left font-medium' onClick={() => handleSelectFile(file.key)}>
-                              {file.name}
+              <div className='grid min-h-[420px] grid-cols-1 gap-4 lg:grid-rows-[minmax(260px,0.6fr)_minmax(220px,0.4fr)]'>
+                <Card className='shadow-none'>
+                  <CardHeader>
+                    <CardTitle>Objects</CardTitle>
+                    <div className='flex items-center gap-2'>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        disabled={!selectedPrefix}
+                        onClick={() => void navigateToPrefix(parentPrefix(selectedPrefix))}
+                      >
+                        Up
+                      </Button>
+                      <div className='flex min-w-0 items-center gap-1 overflow-auto text-sm text-muted-foreground'>
+                        {objectPathParts.map((item, index) => (
+                          <div key={item.prefix} className='flex items-center gap-1'>
+                            {index > 0 && <span>/</span>}
+                            <button
+                              type='button'
+                              className='text-primary hover:underline'
+                              onClick={() => void navigateToPrefix(item.prefix)}
+                            >
+                              {item.label}
                             </button>
-                            <div className='mt-2 flex flex-wrap gap-2'>
-                              <Button
-                                variant='outline'
-                                size='sm'
-                                className='gap-1'
-                                onClick={() => {
-                                  if (!selectedBucket) return;
-                                  window.open(api.objectUrl(selectedBucket.name, file.key), '_blank', 'noopener');
-                                }}
-                              >
-                                <ExternalLink className='size-3.5' />
-                                Open
-                              </Button>
-                              <Button variant='destructive' size='sm' onClick={() => void handleDeleteFile(file.key)}>
-                                Delete
-                              </Button>
-                            </div>
                           </div>
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent>
+                    {objectViewModel.loading ? (
+                      <p className='text-sm text-muted-foreground'>Searching...</p>
+                    ) : !objectViewModel.folders.length && !objectViewModel.files.length ? (
+                      <p className='text-sm text-muted-foreground'>{objectViewModel.emptyMessage}</p>
+                    ) : (
+                      <div className='flex max-h-[320px] flex-col gap-2 overflow-auto pr-1 lg:max-h-[420px]'>
+                        {objectViewModel.folders.map((folder) => (
+                          <div key={folder.prefix} className='flex items-center gap-2 rounded-md border bg-muted p-2'>
+                            <button
+                              type='button'
+                              className='flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-medium hover:text-primary'
+                              onClick={() => void navigateToPrefix(folder.prefix)}
+                            >
+                              <Folder className='size-4 shrink-0' />
+                              <span className='truncate'>{folder.name}</span>
+                            </button>
+                            <Button variant='destructive' size='sm' onClick={() => void handleDeleteFolder(folder.prefix)}>
+                              Delete
+                            </Button>
+                          </div>
+                        ))}
 
-              <Card className='min-h-[380px] shadow-none'>
-                <CardHeader>
-                  <div className='flex items-center justify-between gap-2'>
-                    <CardTitle>Object Preview</CardTitle>
-                    {state.s3.selectedObject && <Badge variant='secondary'>{state.s3.selectedObject.name}</Badge>}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <pre className='max-h-[440px] overflow-auto rounded-md border bg-muted p-3 text-xs leading-5 text-muted-foreground'>
-                    {selectedBucket && state.s3.selectedObject
-                      ? JSON.stringify(
-                          {
-                            bucket: selectedBucket.name,
-                            object: {
-                              key: state.s3.selectedObject.key,
-                              size: state.s3.selectedObject.size,
-                              lastModified: state.s3.selectedObject.lastModified,
-                              etag: state.s3.selectedObject.etag,
+                        {objectViewModel.files.map((file) => {
+                          const active =
+                            state.s3.selectedObject?.bucket === selectedBucket?.name && state.s3.selectedObject?.key === file.key;
+
+                          return (
+                            <div
+                              key={file.key}
+                              className={cn(
+                                'rounded-md border p-2 text-sm transition',
+                                active ? 'border-primary bg-accent text-accent-foreground' : 'bg-background hover:bg-accent'
+                              )}
+                            >
+                              <button type='button' className='w-full text-left font-medium' onClick={() => handleSelectFile(file.key)}>
+                                {file.name}
+                              </button>
+                              <div className='mt-2 flex flex-wrap gap-2'>
+                                <Button
+                                  variant='outline'
+                                  size='sm'
+                                  className='gap-1'
+                                  onClick={() => {
+                                    if (!selectedBucket) return;
+                                    window.open(api.objectUrl(selectedBucket.name, file.key), '_blank', 'noopener');
+                                  }}
+                                >
+                                  <ExternalLink className='size-3.5' />
+                                  Open
+                                </Button>
+                                <Button variant='destructive' size='sm' onClick={() => void handleDeleteFile(file.key)}>
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className='shadow-none'>
+                  <CardHeader>
+                    <div className='flex items-center justify-between gap-2'>
+                      <CardTitle>Object Preview</CardTitle>
+                      {state.s3.selectedObject && <Badge variant='secondary'>{state.s3.selectedObject.name}</Badge>}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className='max-h-[320px] overflow-auto rounded-md border bg-muted p-3 text-xs leading-5 text-muted-foreground lg:max-h-[360px]'>
+                      {selectedBucket && state.s3.selectedObject
+                        ? JSON.stringify(
+                            {
+                              bucket: selectedBucket.name,
+                              object: {
+                                key: state.s3.selectedObject.key,
+                                size: state.s3.selectedObject.size,
+                                lastModified: state.s3.selectedObject.lastModified,
+                                etag: state.s3.selectedObject.etag,
+                              },
+                              objectUrl: api.objectUrl(selectedBucket.name, state.s3.selectedObject.key),
                             },
-                            objectUrl: api.objectUrl(selectedBucket.name, state.s3.selectedObject.key),
-                          },
-                          null,
-                          2
-                        )
-                      : 'Select an object.'}
-                  </pre>
-                </CardContent>
-              </Card>
+                            null,
+                            2
+                          )
+                        : 'Select an object.'}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           )}
         </section>
