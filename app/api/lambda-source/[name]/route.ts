@@ -28,21 +28,38 @@ async function walk(dir: string, baseDir: string, out: SourceEntry[]) {
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   const { name } = await context.params;
-  const basePath = process.env.FLOCI_LOCAL_DATA_PATH || path.resolve(process.cwd(), '../floci/data/lambda-code');
-  const functionDir = path.join(basePath, name);
+  const configuredPath = process.env.FLOCI_LOCAL_DATA_PATH?.trim();
+  const candidateBasePaths = [
+    configuredPath,
+    path.resolve(process.cwd(), '../floci/data/lambda-code'),
+    '/app/data/lambda-code',
+    path.resolve(process.cwd(), '../../floci/data/lambda-code'),
+  ].filter((value): value is string => Boolean(value));
 
-  try {
-    const stat = await fs.stat(functionDir);
-    if (!stat.isDirectory()) {
-      return Response.json({ error: 'Function source directory not found.' }, { status: 404 });
+  for (const basePath of candidateBasePaths) {
+    const functionDir = path.join(basePath, name);
+    try {
+      const stat = await fs.stat(functionDir);
+      if (!stat.isDirectory()) {
+        continue;
+      }
+
+      const entries: SourceEntry[] = [];
+      await walk(functionDir, functionDir, entries);
+      entries.sort((a, b) => a.path.localeCompare(b.path));
+
+      return Response.json({ entries, sourcePath: functionDir });
+    } catch {
+      continue;
     }
-
-    const entries: SourceEntry[] = [];
-    await walk(functionDir, functionDir, entries);
-    entries.sort((a, b) => a.path.localeCompare(b.path));
-
-    return Response.json({ entries });
-  } catch {
-    return Response.json({ error: 'Function source directory not found.' }, { status: 404 });
   }
+
+  return Response.json(
+    {
+      error: 'Function source directory not found.',
+      searchedBasePaths: candidateBasePaths,
+      hint: 'Mount the Floci data directory into the UI container and set FLOCI_LOCAL_DATA_PATH to /app/data/lambda-code.',
+    },
+    { status: 404 }
+  );
 }
