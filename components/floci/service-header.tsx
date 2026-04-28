@@ -1,18 +1,30 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
+import type { ReactNode } from 'react';
+
 import { Input } from '@/components/ui/input';
 
 type ServiceHeaderProps = {
   title: string;
   description: string;
-  summaryCountLabel: string;
   search: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
+  showSearch?: boolean;
+  topActions?: ReactNode;
+  bottomContent?: ReactNode;
 };
 
-export function ServiceHeader({ title, description, summaryCountLabel, search, onSearchChange, searchPlaceholder }: ServiceHeaderProps) {
+export function ServiceHeader({
+  title,
+  description,
+  search,
+  onSearchChange,
+  searchPlaceholder,
+  showSearch = true,
+  topActions,
+  bottomContent,
+}: ServiceHeaderProps) {
   return (
     <header className='border-b bg-card p-4 md:p-6'>
       <div className='flex flex-col gap-4'>
@@ -22,18 +34,19 @@ export function ServiceHeader({ title, description, summaryCountLabel, search, o
             <h2 className='text-2xl font-bold tracking-tight md:text-3xl'>{title}</h2>
             <p className='max-w-3xl text-sm text-muted-foreground'>{description}</p>
           </div>
-          <div className='flex flex-wrap gap-2'>
-            <Badge variant='secondary'>{title}</Badge>
-            <Badge variant='outline'>{summaryCountLabel}</Badge>
-          </div>
+          <div className='flex flex-wrap gap-2'>{topActions}</div>
         </div>
 
-        <Input
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder={searchPlaceholder}
-          className='h-12 rounded-md text-sm shadow-none'
-        />
+        {showSearch ? (
+          <Input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={searchPlaceholder}
+            className='h-12 rounded-md text-sm shadow-none'
+          />
+        ) : null}
+
+        {bottomContent ? <div>{bottomContent}</div> : null}
       </div>
     </header>
   );

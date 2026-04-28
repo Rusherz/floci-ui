@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { ServiceShell } from '@/components/floci/service-shell';
@@ -26,6 +27,11 @@ export default function DynamoDbPage() {
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
   const [itemsLoading, setItemsLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [partitionKey, setPartitionKey] = useState('id');
+  const [sortKey, setSortKey] = useState('');
 
   const loadTables = useCallback(async () => {
     setLoading(true);
@@ -125,12 +131,35 @@ export default function DynamoDbPage() {
     }
   }, [api, description, queryValue, selectedTable]);
 
+  const createTable = useCallback(
+    async (nameRaw: string) => {
+      const tableName = nameRaw.trim();
+      if (!tableName || !partitionKey.trim()) {
+        setCreateError('Table name and partition key are required.');
+        return;
+      }
+      setCreateError('');
+      setCreating(true);
+      try {
+        await api.createDynamoTable(tableName, partitionKey.trim(), sortKey.trim());
+        await loadTables();
+        setSelectedTable(tableName);
+        setCreateOpen(false);
+        setStatus({ type: 'info', message: `Created table ${tableName}.` });
+      } catch (error) {
+        setCreateError(error instanceof Error ? error.message : 'Failed to create table');
+      } finally {
+        setCreating(false);
+      }
+    },
+    [api, loadTables, partitionKey, sortKey]
+  );
+
   return (
     <ServiceShell
       activeSlug='dynamodb'
       title='DynamoDB'
       description='Table browsing, item explorer, and query/scan actions.'
-      summaryCountLabel={`${tables.length} table(s)`}
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder='Search tables...'
@@ -140,7 +169,12 @@ export default function DynamoDbPage() {
     >
             <Card className='min-h-0 min-w-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
               <CardHeader>
-                <CardTitle className='text-base'>Tables</CardTitle>
+                <div className='flex items-center justify-between gap-2'>
+                  <CardTitle className='text-base'>Tables ({filteredTables.length})</CardTitle>
+                  <Button size='sm' onClick={() => setCreateOpen(true)}>
+                    Create Table
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className='xl:min-h-0 xl:flex-1'>
                 {!filteredTables.length ? (
@@ -205,6 +239,32 @@ export default function DynamoDbPage() {
                 </CardContent>
               </Card>
             </ServicePanelColumn>
+            <CreateResourceDialog
+              open={createOpen}
+              onOpenChange={(open) => {
+                setCreateOpen(open);
+                if (!open) setCreateError('');
+              }}
+              title='Create DynamoDB Table'
+              description='Create a new table with string keys.'
+              label='Table Name'
+              placeholder='my-table'
+              confirmLabel='Create Table'
+              submitting={creating}
+              errorMessage={createError}
+              onSubmit={createTable}
+            >
+              <div className='grid gap-2 rounded-md border p-3 sm:grid-cols-2'>
+                <div className='grid gap-1'>
+                  <p className='text-xs text-muted-foreground'>Partition Key</p>
+                  <Input value={partitionKey} onChange={(event) => setPartitionKey(event.target.value)} />
+                </div>
+                <div className='grid gap-1'>
+                  <p className='text-xs text-muted-foreground'>Sort Key (optional)</p>
+                  <Input value={sortKey} onChange={(event) => setSortKey(event.target.value)} />
+                </div>
+              </div>
+            </CreateResourceDialog>
     </ServiceShell>
   );
 }

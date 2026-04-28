@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
+import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,11 @@ export default function EventBridgePage() {
   const [detail, setDetail] = useState('{\n  "ok": true\n}');
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
+  const [createBusOpen, setCreateBusOpen] = useState(false);
+  const [createRuleOpen, setCreateRuleOpen] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [rulePattern, setRulePattern] = useState('{\n  "source": ["floci.ui"]\n}');
 
   const loadBuses = useCallback(async () => {
     setLoading(true);
@@ -106,12 +112,53 @@ export default function EventBridgePage() {
     }
   }, [api, detail, detailType, selectedBus, source]);
 
+  const createBus = useCallback(async (nameRaw: string) => {
+    const name = nameRaw.trim();
+    if (!name) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      await api.createEventBus(name);
+      setSelectedBus(name);
+      await loadBuses();
+      setCreateBusOpen(false);
+      setStatus({ type: 'info', message: `Created bus ${name}.` });
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : 'Failed to create bus');
+    } finally {
+      setCreating(false);
+    }
+  }, [api, loadBuses]);
+
+  const createRule = useCallback(async (nameRaw: string) => {
+    const name = nameRaw.trim();
+    if (!name || !selectedBus) return;
+    try {
+      JSON.parse(rulePattern);
+    } catch {
+      setCreateError('Event pattern must be valid JSON.');
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      await api.createEventRule(name, selectedBus, rulePattern);
+      await loadRules();
+      setSelectedRule(name);
+      setCreateRuleOpen(false);
+      setStatus({ type: 'info', message: `Created rule ${name}.` });
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : 'Failed to create rule');
+    } finally {
+      setCreating(false);
+    }
+  }, [api, loadRules, rulePattern, selectedBus]);
+
   return (
     <ServiceShell
       activeSlug='eventbridge'
       title='EventBridge'
       description='Event bus, rule, target visibility, and test event publishing.'
-      summaryCountLabel={`${rules.length} rule(s)`}
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder='Search rules...'
@@ -121,7 +168,13 @@ export default function EventBridgePage() {
     >
       <Card className='min-h-0 min-w-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
         <CardHeader>
-          <CardTitle className='text-base'>Rules</CardTitle>
+          <div className='flex items-center justify-between gap-2'>
+            <CardTitle className='text-base'>Rules ({filtered.length})</CardTitle>
+            <div className='flex gap-2'>
+              <Button size='sm' variant='outline' onClick={() => setCreateBusOpen(true)}>Create Bus</Button>
+              <Button size='sm' onClick={() => setCreateRuleOpen(true)} disabled={!selectedBus}>Create Rule</Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
           {!filtered.length ? (
@@ -183,6 +236,35 @@ export default function EventBridgePage() {
           </CardContent>
         </Card>
       </ServicePanelColumn>
+      <CreateResourceDialog
+        open={createBusOpen}
+        onOpenChange={(open) => { setCreateBusOpen(open); if (!open) setCreateError(''); }}
+        title='Create Event Bus'
+        description='Create a new EventBridge bus.'
+        label='Bus Name'
+        placeholder='custom-bus'
+        confirmLabel='Create Bus'
+        submitting={creating}
+        errorMessage={createError}
+        onSubmit={createBus}
+      />
+      <CreateResourceDialog
+        open={createRuleOpen}
+        onOpenChange={(open) => { setCreateRuleOpen(open); if (!open) setCreateError(''); }}
+        title='Create Event Rule'
+        description={`Create a rule on bus ${selectedBus || 'default'}.`}
+        label='Rule Name'
+        placeholder='my-rule'
+        confirmLabel='Create Rule'
+        submitting={creating}
+        errorMessage={createError}
+        onSubmit={createRule}
+      >
+        <div className='grid gap-1'>
+          <p className='text-xs text-muted-foreground'>Event Pattern JSON</p>
+          <BoundedTextarea value={rulePattern} onChange={(event) => setRulePattern(event.target.value)} className='font-mono' minHeightClassName='min-h-[100px]' maxHeightClassName='max-h-[24vh]' />
+        </div>
+      </CreateResourceDialog>
     </ServiceShell>
   );
 }

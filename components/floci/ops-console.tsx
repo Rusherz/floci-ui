@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Folder } from 'lucide-react';
 
+import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
@@ -18,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import { createInitialState, STORAGE_KEYS, type AppState, type FileEntry, type Queue, type View, VIEWS } from '@/lib/floci/types';
@@ -71,6 +73,25 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
     open: false,
     title: 'Confirm',
     message: '',
+  });
+  const [createQueueOpen, setCreateQueueOpen] = useState(false);
+  const [createBucketOpen, setCreateBucketOpen] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [sqsAdvancedOpen, setSqsAdvancedOpen] = useState(false);
+  const [s3AdvancedOpen, setS3AdvancedOpen] = useState(false);
+  const [sqsSettings, setSqsSettings] = useState({
+    delaySeconds: '0',
+    visibilityTimeout: '30',
+    messageRetentionPeriod: '345600',
+    receiveMessageWaitTimeSeconds: '0',
+    maximumMessageSize: '262144',
+    contentBasedDeduplication: false,
+  });
+  const [s3Settings, setS3Settings] = useState({
+    region: 'ca-central-1',
+    acl: 'private',
+    objectLockEnabled: false,
   });
 
   const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
@@ -552,6 +573,156 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
     }
   }, [api, commitState, confirmDialog, extractQueueUrl, getFilteredQueues, setStatus]);
 
+  const handleCreateQueue = useCallback(
+    async (rawName: string) => {
+      const name = rawName.trim();
+      const isValid = /^[A-Za-z0-9_-]{1,80}(\.fifo)?$/.test(name);
+
+      if (!isValid) {
+        setCreateError('Queue name must be 1-80 chars using letters, numbers, hyphen, underscore, optional .fifo.');
+        return;
+      }
+
+      setCreateSubmitting(true);
+      setCreateError('');
+      try {
+        const delay = Number(sqsSettings.delaySeconds.trim());
+        const visibility = Number(sqsSettings.visibilityTimeout.trim());
+        const retention = Number(sqsSettings.messageRetentionPeriod.trim());
+        const waitTime = Number(sqsSettings.receiveMessageWaitTimeSeconds.trim());
+        const maxSize = Number(sqsSettings.maximumMessageSize.trim());
+        const validNumbers =
+          Number.isInteger(delay) &&
+          Number.isInteger(visibility) &&
+          Number.isInteger(retention) &&
+          Number.isInteger(waitTime) &&
+          Number.isInteger(maxSize);
+        if (!validNumbers) {
+          throw new Error('Advanced SQS settings must be integers.');
+        }
+        if (delay < 0 || delay > 900) {
+          throw new Error('Delay Seconds must be between 0 and 900.');
+        }
+        if (visibility < 0 || visibility > 43200) {
+          throw new Error('Visibility Timeout must be between 0 and 43200.');
+        }
+        if (retention < 60 || retention > 1209600) {
+          throw new Error('Message Retention must be between 60 and 1209600.');
+        }
+        if (waitTime < 0 || waitTime > 20) {
+          throw new Error('Receive Wait Time must be between 0 and 20.');
+        }
+        if (maxSize < 1024 || maxSize > 262144) {
+          throw new Error('Max Message Size must be between 1024 and 262144.');
+        }
+
+        const attrs: Record<string, string> = {
+          DelaySeconds: String(delay),
+          VisibilityTimeout: String(visibility),
+          MessageRetentionPeriod: String(retention),
+          ReceiveMessageWaitTimeSeconds: String(waitTime),
+          MaximumMessageSize: String(maxSize),
+        };
+        const isFifo = name.endsWith('.fifo');
+        if (isFifo) {
+          attrs.FifoQueue = 'true';
+          attrs.ContentBasedDeduplication = sqsSettings.contentBasedDeduplication ? 'true' : 'false';
+        }
+
+        await api.createSqsQueue(name, attrs);
+
+        const queues = await api.loadQueues();
+        const selectedQueue = Math.max(
+          0,
+          queues.findIndex((queue) => queue.name === name)
+        );
+        const messagesByQueue: AppState['sqs']['messagesByQueue'] = {};
+        let selectedMessage = 0;
+
+        if (queues.length) {
+          const queue = queues[selectedQueue];
+          const queueMessages = await api.loadMessagesForQueue(queue.queueUrl || extractQueueUrl(queue.name));
+          messagesByQueue[queue.name] = queueMessages;
+          selectedMessage = clampIndex(0, queueMessages.length);
+        }
+
+        commitState((draft) => {
+          draft.sqs.queues = queues;
+          draft.sqs.messagesByQueue = messagesByQueue;
+          draft.selectedQueue = selectedQueue;
+          draft.selectedMessage = selectedMessage;
+        });
+
+        setCreateQueueOpen(false);
+        setStatus(`Created queue ${name}.`, 'info');
+      } catch (error) {
+        setCreateError(error instanceof Error ? error.message : 'Failed to create queue');
+      } finally {
+        setCreateSubmitting(false);
+      }
+    },
+    [api, commitState, extractQueueUrl, setStatus, sqsSettings]
+  );
+
+  const handleCreateBucket = useCallback(
+    async (rawName: string) => {
+      const name = rawName.trim().toLowerCase();
+      const isValid = /^(?!\d+\.\d+\.\d+\.\d+$)(?!-)(?!.*--)[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(name);
+
+      if (!isValid) {
+        setCreateError('Bucket name must be 3-63 chars, lowercase, numbers, dot, hyphen.');
+        return;
+      }
+
+      setCreateSubmitting(true);
+      setCreateError('');
+      try {
+        await api.createS3Bucket(name, {
+          region: s3Settings.region.trim() || 'ca-central-1',
+          acl: s3Settings.acl.trim() || 'private',
+          objectLockEnabled: s3Settings.objectLockEnabled,
+        });
+
+        const buckets = await api.loadBuckets();
+        const selectedBucket = Math.max(
+          0,
+          buckets.findIndex((bucket) => bucket.name === name)
+        );
+
+        commitState((draft) => {
+          draft.s3.buckets = buckets;
+          draft.selectedBucket = selectedBucket;
+          draft.s3.entriesByLocation = {};
+          draft.s3.selectedObject = null;
+          draft.s3.allKeysByBucket = {};
+          draft.s3.searchResults = null;
+          draft.s3.searchLoading = false;
+          draft.s3.searchRequestId += 1;
+
+          for (const bucket of buckets) {
+            if (draft.s3.prefixByBucket[bucket.name] === undefined) {
+              draft.s3.prefixByBucket[bucket.name] = '';
+            }
+          }
+        });
+
+        const selected = stateRef.current.s3.buckets[stateRef.current.selectedBucket];
+        if (selected) {
+          const prefix = stateRef.current.s3.prefixByBucket[selected.name] || '';
+          await ensureObjectsLoadedForBucketPrefix(selected.name, prefix);
+        }
+
+        setCreateBucketOpen(false);
+        setStatus(`Created bucket ${name}.`, 'info');
+      } catch (error) {
+        setCreateError(error instanceof Error ? error.message : 'Failed to create bucket');
+      } finally {
+        setCreateSubmitting(false);
+      }
+    },
+    [api, commitState, ensureObjectsLoadedForBucketPrefix, s3Settings.acl, s3Settings.objectLockEnabled, s3Settings.region, setStatus]
+  );
+
   const handleDeleteFolder = useCallback(
     async (folderPrefix: string) => {
       const snapshot = stateRef.current;
@@ -889,19 +1060,27 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
   const activeViewLabel = state.view === VIEWS.sqs ? 'SQS' : 'S3';
   const activeViewDescription =
     state.view === VIEWS.sqs ? 'Queue operations, message inspection, and timed polling.' : 'Bucket navigation, object actions, and path-aware search.';
-  const viewItemCount = state.view === VIEWS.sqs ? `${filteredQueues.length} queue(s)` : `${state.s3.buckets.length} bucket(s)`;
 
   return (
     <ServiceShell
       activeSlug={state.view}
       title={activeViewLabel}
       description={activeViewDescription}
-      summaryCountLabel={viewItemCount}
       search={state.search}
       onSearchChange={(value) => {
         void handleSearchChange(value);
       }}
       searchPlaceholder={state.view === VIEWS.sqs ? 'Search queues...' : 'Search objects or path...'}
+      headerTopActions={
+        state.view === VIEWS.sqs ? (
+          <Button variant='outline' size='sm' onClick={togglePolling}>
+            {state.polling.enabled ? 'Pause' : 'Resume'}
+          </Button>
+        ) : undefined
+      }
+      statusSlotContent={
+        state.view === VIEWS.sqs ? <Progress value={pollProgress} className='rounded-l-none rounded-r-full' /> : undefined
+      }
       onRefresh={() => void handleRefresh()}
       refreshDisabled={state.loading}
       status={banner}
@@ -911,7 +1090,19 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         <>
             <Card className='min-h-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
               <CardHeader>
-                <CardTitle className='text-base'>Queues</CardTitle>
+                <div className='flex items-center justify-between gap-2'>
+                  <CardTitle className='text-base'>Queues ({filteredQueues.length})</CardTitle>
+                  <Button
+                    size='sm'
+                    onClick={() => {
+                      setCreateError('');
+                      setSqsAdvancedOpen(false);
+                      setCreateQueueOpen(true);
+                    }}
+                  >
+                    Create Queue
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className='xl:min-h-0 xl:flex-1'>
                 {!filteredQueues.length ? (
@@ -945,11 +1136,7 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                 <CardHeader>
                   <div className='flex items-center justify-between gap-2'>
                     <CardTitle className='text-base'>Messages</CardTitle>
-                    <Button variant='outline' size='sm' onClick={togglePolling}>
-                      {state.polling.enabled ? 'Pause' : 'Resume'}
-                    </Button>
                   </div>
-                  <Progress value={pollProgress} />
                 </CardHeader>
                 <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
                   {!selectedQueue || !selectedQueueMessages.length ? (
@@ -1017,7 +1204,19 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         <>
             <Card className='min-h-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
               <CardHeader>
-                <CardTitle className='text-base'>Buckets</CardTitle>
+                <div className='flex items-center justify-between gap-2'>
+                  <CardTitle className='text-base'>Buckets ({state.s3.buckets.length})</CardTitle>
+                  <Button
+                    size='sm'
+                    onClick={() => {
+                      setCreateError('');
+                      setS3AdvancedOpen(false);
+                      setCreateBucketOpen(true);
+                    }}
+                  >
+                    Create Bucket
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className='xl:min-h-0 xl:flex-1'>
                 {!state.s3.buckets.length ? (
@@ -1223,6 +1422,127 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CreateResourceDialog
+        open={createQueueOpen}
+        onOpenChange={(open) => {
+          setCreateQueueOpen(open);
+          if (!open) {
+            setCreateError('');
+          }
+        }}
+        title='Create SQS Queue'
+        description='Create a new queue in local Floci.'
+        label='Queue Name'
+        placeholder='my-queue'
+        confirmLabel='Create Queue'
+        submitting={createSubmitting}
+        errorMessage={createError}
+        submitDisabled={
+          !sqsSettings.delaySeconds.trim() ||
+          !sqsSettings.visibilityTimeout.trim() ||
+          !sqsSettings.messageRetentionPeriod.trim() ||
+          !sqsSettings.receiveMessageWaitTimeSeconds.trim() ||
+          !sqsSettings.maximumMessageSize.trim()
+        }
+        onSubmit={handleCreateQueue}
+      >
+        <div className='grid gap-2'>
+          <button type='button' className='w-fit text-xs text-primary hover:underline' onClick={() => setSqsAdvancedOpen((current) => !current)}>
+            {sqsAdvancedOpen ? 'Hide advanced settings' : 'Show advanced settings'}
+          </button>
+          {sqsAdvancedOpen ? (
+            <div className='grid gap-2 rounded-md border p-3 sm:grid-cols-2'>
+              <div className='grid gap-1'>
+                <p className='text-xs text-muted-foreground'>Delay Seconds</p>
+                <Input value={sqsSettings.delaySeconds} onChange={(event) => setSqsSettings((current) => ({ ...current, delaySeconds: event.target.value }))} />
+              </div>
+              <div className='grid gap-1'>
+                <p className='text-xs text-muted-foreground'>Visibility Timeout</p>
+                <Input value={sqsSettings.visibilityTimeout} onChange={(event) => setSqsSettings((current) => ({ ...current, visibilityTimeout: event.target.value }))} />
+              </div>
+              <div className='grid gap-1'>
+                <p className='text-xs text-muted-foreground'>Message Retention</p>
+                <Input value={sqsSettings.messageRetentionPeriod} onChange={(event) => setSqsSettings((current) => ({ ...current, messageRetentionPeriod: event.target.value }))} />
+              </div>
+              <div className='grid gap-1'>
+                <p className='text-xs text-muted-foreground'>Receive Wait Time</p>
+                <Input value={sqsSettings.receiveMessageWaitTimeSeconds} onChange={(event) => setSqsSettings((current) => ({ ...current, receiveMessageWaitTimeSeconds: event.target.value }))} />
+              </div>
+              <div className='grid gap-1'>
+                <p className='text-xs text-muted-foreground'>Max Message Size</p>
+                <Input value={sqsSettings.maximumMessageSize} onChange={(event) => setSqsSettings((current) => ({ ...current, maximumMessageSize: event.target.value }))} />
+              </div>
+              <div className='flex items-end'>
+                <Button
+                  type='button'
+                  variant={sqsSettings.contentBasedDeduplication ? 'default' : 'outline'}
+                  size='sm'
+                  onClick={() =>
+                    setSqsSettings((current) => ({
+                      ...current,
+                      contentBasedDeduplication: !current.contentBasedDeduplication,
+                    }))
+                  }
+                >
+                  Content-Based Dedup
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </CreateResourceDialog>
+
+      <CreateResourceDialog
+        open={createBucketOpen}
+        onOpenChange={(open) => {
+          setCreateBucketOpen(open);
+          if (!open) {
+            setCreateError('');
+          }
+        }}
+        title='Create S3 Bucket'
+        description='Create a new bucket in local Floci.'
+        label='Bucket Name'
+        placeholder='my-bucket'
+        confirmLabel='Create Bucket'
+        submitting={createSubmitting}
+        errorMessage={createError}
+        onSubmit={handleCreateBucket}
+      >
+        <div className='grid gap-2'>
+          <button type='button' className='w-fit text-xs text-primary hover:underline' onClick={() => setS3AdvancedOpen((current) => !current)}>
+            {s3AdvancedOpen ? 'Hide advanced settings' : 'Show advanced settings'}
+          </button>
+          {s3AdvancedOpen ? (
+            <div className='grid gap-2 rounded-md border p-3 sm:grid-cols-2'>
+              <div className='grid gap-1 sm:col-span-2'>
+                <p className='text-xs text-muted-foreground'>Region</p>
+                <Input value={s3Settings.region} onChange={(event) => setS3Settings((current) => ({ ...current, region: event.target.value }))} placeholder='ca-central-1' />
+              </div>
+              <div className='grid gap-1'>
+                <p className='text-xs text-muted-foreground'>Canned ACL</p>
+                <Input value={s3Settings.acl} onChange={(event) => setS3Settings((current) => ({ ...current, acl: event.target.value }))} placeholder='private' />
+              </div>
+              <div className='flex items-end'>
+                <Button
+                  type='button'
+                  variant={s3Settings.objectLockEnabled ? 'default' : 'outline'}
+                  size='sm'
+                  onClick={() =>
+                    setS3Settings((current) => ({
+                      ...current,
+                      objectLockEnabled: !current.objectLockEnabled,
+                    }))
+                  }
+                >
+                  Object Lock
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </CreateResourceDialog>
     </ServiceShell>
   );
 }

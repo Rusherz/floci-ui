@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { FlociSidebar } from '@/components/floci/floci-sidebar';
+import { ServiceHeader } from '@/components/floci/service-header';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,19 +21,14 @@ export function PlannedServicePage({ slug, title, description, checklist }: Plan
         <FlociSidebar activeSlug={slug} />
 
         <section className='flex min-h-0 flex-col overflow-hidden'>
-          <header className='border-b bg-card p-4 md:p-6'>
-            <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
-              <div className='flex flex-col gap-1'>
-                <p className='text-xs font-semibold uppercase tracking-[0.22em] text-primary'>Control Deck</p>
-                <h2 className='text-2xl font-bold tracking-tight md:text-3xl'>{title}</h2>
-                <p className='max-w-3xl text-sm text-muted-foreground'>{description}</p>
-              </div>
-              <div className='flex flex-wrap gap-2'>
-                <Badge variant='secondary'>{title}</Badge>
-                <Badge variant='outline'>Planned</Badge>
-              </div>
-            </div>
-          </header>
+          <ServiceHeader
+            title={title}
+            description={description}
+            search=''
+            onSearchChange={() => {}}
+            searchPlaceholder=''
+            showSearch={false}
+          />
 
           <section className='grid min-h-0 flex-1 gap-4 overflow-hidden p-4 md:p-6 lg:grid-cols-[320px_minmax(0,1fr)]'>
             <Card className='min-h-0 rounded-md shadow-none'>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
+import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,9 @@ export default function SnsPage() {
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
   const [subscriptionsLoading, setSubscriptionsLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const selectedTopic = topics.find((topic) => topic.arn === selectedTopicArn) || null;
 
@@ -100,12 +104,35 @@ export default function SnsPage() {
     }
   }, [api, message, selectedTopicArn, subject]);
 
+  const createTopic = useCallback(
+    async (nameRaw: string) => {
+      const name = nameRaw.trim();
+      if (!/^[A-Za-z0-9_-]{1,256}(\.fifo)?$/.test(name)) {
+        setCreateError('Topic name must be 1-256 chars and use letters, numbers, underscore, hyphen, optional .fifo.');
+        return;
+      }
+      setCreateError('');
+      setCreating(true);
+      try {
+        const arn = await api.createSnsTopic(name);
+        await loadTopics();
+        setSelectedTopicArn(arn);
+        setCreateOpen(false);
+        setStatus({ type: 'info', message: `Created topic ${name}.` });
+      } catch (error) {
+        setCreateError(error instanceof Error ? error.message : 'Failed to create topic');
+      } finally {
+        setCreating(false);
+      }
+    },
+    [api, loadTopics]
+  );
+
   return (
     <ServiceShell
       activeSlug='sns'
       title='SNS'
       description='Topics, subscriptions, and publish workflows.'
-      summaryCountLabel={`${topics.length} topic(s)`}
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder='Search topics...'
@@ -115,7 +142,12 @@ export default function SnsPage() {
     >
             <Card className='min-h-0 min-w-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
               <CardHeader>
-                <CardTitle className='text-base'>Topics</CardTitle>
+                <div className='flex items-center justify-between gap-2'>
+                  <CardTitle className='text-base'>Topics ({filteredTopics.length})</CardTitle>
+                  <Button size='sm' onClick={() => setCreateOpen(true)}>
+                    Create Topic
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className='xl:min-h-0 xl:flex-1'>
                 {!filteredTopics.length ? (
@@ -185,6 +217,21 @@ export default function SnsPage() {
                 </CardContent>
               </Card>
             </ServicePanelColumn>
+            <CreateResourceDialog
+              open={createOpen}
+              onOpenChange={(open) => {
+                setCreateOpen(open);
+                if (!open) setCreateError('');
+              }}
+              title='Create SNS Topic'
+              description='Create a new topic in local Floci.'
+              label='Topic Name'
+              placeholder='my-topic'
+              confirmLabel='Create Topic'
+              submitting={creating}
+              errorMessage={createError}
+              onSubmit={createTopic}
+            />
     </ServiceShell>
   );
 }

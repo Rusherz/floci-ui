@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
+import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import type { StepFunctionExecutionSummary, StepFunctionStateMachineSummary } from '@/lib/floci/types';
@@ -23,6 +25,14 @@ export default function StepFunctionsPage() {
   const [executionInput, setExecutionInput] = useState('{\n  "trigger": "manual"\n}');
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [machineType, setMachineType] = useState<'STANDARD' | 'EXPRESS'>('STANDARD');
+  const [roleArn, setRoleArn] = useState('arn:aws:iam::000000000000:role/states-role');
+  const [definition, setDefinition] = useState(
+    '{\n  "Comment": "Hello world",\n  "StartAt": "Done",\n  "States": {\n    "Done": { "Type": "Succeed" }\n  }\n}'
+  );
 
   const loadStateMachines = useCallback(async () => {
     setLoading(true);
@@ -91,12 +101,41 @@ export default function StepFunctionsPage() {
     }
   }, [api, executionInput, loadExecutions, selectedArn]);
 
+  const createStateMachine = useCallback(
+    async (nameRaw: string) => {
+      const name = nameRaw.trim();
+      if (!name || !roleArn.trim()) {
+        setCreateError('Name and role ARN are required.');
+        return;
+      }
+      try {
+        JSON.parse(definition);
+      } catch {
+        setCreateError('State machine definition must be valid JSON.');
+        return;
+      }
+      setCreateError('');
+      setCreating(true);
+      try {
+        const arn = await api.createStepFunctionsStateMachine(name, roleArn.trim(), definition, machineType);
+        await loadStateMachines();
+        setSelectedArn(arn);
+        setCreateOpen(false);
+        setStatus({ type: 'info', message: `Created state machine ${name}.` });
+      } catch (error) {
+        setCreateError(error instanceof Error ? error.message : 'Failed to create state machine');
+      } finally {
+        setCreating(false);
+      }
+    },
+    [api, definition, loadStateMachines, machineType, roleArn]
+  );
+
   return (
     <ServiceShell
       activeSlug='step-functions'
       title='Step Functions'
       description='State machine list, execution history, and start execution action.'
-      summaryCountLabel={`${stateMachines.length} machine(s)`}
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder='Search state machines...'
@@ -106,7 +145,12 @@ export default function StepFunctionsPage() {
     >
       <Card className='min-h-0 min-w-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
         <CardHeader>
-          <CardTitle className='text-base'>State Machines</CardTitle>
+          <div className='flex items-center justify-between gap-2'>
+            <CardTitle className='text-base'>State Machines ({filtered.length})</CardTitle>
+            <Button size='sm' onClick={() => setCreateOpen(true)}>
+              Create State Machine
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
           {!filtered.length ? (
@@ -154,6 +198,40 @@ export default function StepFunctionsPage() {
           </CardContent>
         </Card>
       </ServicePanelColumn>
+      <CreateResourceDialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setCreateError('');
+        }}
+        title='Create State Machine'
+        description='Create a Step Functions state machine.'
+        label='State Machine Name'
+        placeholder='my-state-machine'
+        confirmLabel='Create State Machine'
+        submitting={creating}
+        errorMessage={createError}
+        onSubmit={createStateMachine}
+      >
+        <div className='grid gap-2 rounded-md border p-3'>
+          <div className='grid gap-1 sm:grid-cols-2 sm:gap-2'>
+            <div className='grid gap-1'>
+              <p className='text-xs text-muted-foreground'>Type</p>
+              <Button type='button' variant='outline' size='sm' onClick={() => setMachineType((current) => (current === 'STANDARD' ? 'EXPRESS' : 'STANDARD'))}>
+                {machineType}
+              </Button>
+            </div>
+            <div className='grid gap-1'>
+              <p className='text-xs text-muted-foreground'>Role ARN</p>
+              <Input value={roleArn} onChange={(event) => setRoleArn(event.target.value)} />
+            </div>
+          </div>
+          <div className='grid gap-1'>
+            <p className='text-xs text-muted-foreground'>Definition JSON</p>
+            <BoundedTextarea value={definition} onChange={(event) => setDefinition(event.target.value)} className='font-mono' minHeightClassName='min-h-[120px]' maxHeightClassName='max-h-[28vh]' />
+          </div>
+        </div>
+      </CreateResourceDialog>
     </ServiceShell>
   );
 }

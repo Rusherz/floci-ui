@@ -89,7 +89,6 @@ export default function SsmPage() {
       activeSlug='ssm'
       title='SSM Parameter Store'
       description='Parameter list, value inspection, and write/update actions.'
-      summaryCountLabel={`${parameters.length} parameter(s)`}
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder='Search parameters...'
@@ -99,7 +98,7 @@ export default function SsmPage() {
     >
       <Card className='min-h-0 min-w-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
         <CardHeader>
-          <CardTitle className='text-base'>Parameters</CardTitle>
+          <CardTitle className='text-base'>Parameters ({filtered.length})</CardTitle>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
           {!filtered.length ? (

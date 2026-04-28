@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
+import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import type { SecretDetails, SecretSummary } from '@/lib/floci/types';
@@ -23,6 +25,10 @@ export default function SecretsManagerPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createDescription, setCreateDescription] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const loadSecrets = useCallback(async () => {
     setLoading(true);
@@ -86,12 +92,35 @@ export default function SecretsManagerPage() {
     }
   }, [api, loadSelected, selectedSecretId, value]);
 
+  const createSecret = useCallback(
+    async (nameRaw: string) => {
+      const name = nameRaw.trim();
+      if (!name || !value.trim()) {
+        setCreateError('Secret name and value are required.');
+        return;
+      }
+      setCreateError('');
+      setCreating(true);
+      try {
+        const arn = await api.createSecret(name, value, createDescription.trim());
+        await loadSecrets();
+        setSelectedSecretId(arn || name);
+        setCreateOpen(false);
+        setStatus({ type: 'info', message: `Created secret ${name}.` });
+      } catch (error) {
+        setCreateError(error instanceof Error ? error.message : 'Failed to create secret');
+      } finally {
+        setCreating(false);
+      }
+    },
+    [api, createDescription, loadSecrets, value]
+  );
+
   return (
     <ServiceShell
       activeSlug='secrets-manager'
       title='Secrets Manager'
       description='Secret listing, version metadata, and value updates.'
-      summaryCountLabel={`${secrets.length} secret(s)`}
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder='Search secrets...'
@@ -101,7 +130,12 @@ export default function SecretsManagerPage() {
     >
       <Card className='min-h-0 min-w-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
         <CardHeader>
-          <CardTitle className='text-base'>Secrets</CardTitle>
+          <div className='flex items-center justify-between gap-2'>
+            <CardTitle className='text-base'>Secrets ({filtered.length})</CardTitle>
+            <Button size='sm' onClick={() => setCreateOpen(true)}>
+              Create Secret
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
           {!filtered.length ? (
@@ -150,6 +184,26 @@ export default function SecretsManagerPage() {
           </CardContent>
         </Card>
       </ServicePanelColumn>
+      <CreateResourceDialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setCreateError('');
+        }}
+        title='Create Secret'
+        description='Create a new secret using the value currently in the Secret Value editor.'
+        label='Secret Name'
+        placeholder='my/secret'
+        confirmLabel='Create Secret'
+        submitting={creating}
+        errorMessage={createError}
+        onSubmit={createSecret}
+      >
+        <div className='grid gap-1'>
+          <p className='text-xs text-muted-foreground'>Description (optional)</p>
+          <Input value={createDescription} onChange={(event) => setCreateDescription(event.target.value)} />
+        </div>
+      </CreateResourceDialog>
     </ServiceShell>
   );
 }

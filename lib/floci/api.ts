@@ -198,12 +198,73 @@ export function createApiClient(config: ApiConfig) {
     });
   }
 
-  async function invokeLambda(functionName: string, payload: string): Promise<{ statusCode: number; functionError: string; logs: string; result: unknown }> {
+  async function getLambdaFunctionCodeZip(functionName: string): Promise<Uint8Array> {
+    const response = await fetch(joinUrl(config.baseUrl, `/2015-03-31/functions/${encodeURIComponent(functionName)}`), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json,*/*',
+      },
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Lambda GetFunction failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+
+    const payload = parseJsonBody(text);
+    const locationRaw = String((payload.Code as Record<string, unknown> | undefined)?.Location || '');
+    if (!locationRaw) {
+      throw new Error('Lambda GetFunction returned no code location.');
+    }
+
+    let downloadUrl = locationRaw;
+    try {
+      const locationUrl = new URL(locationRaw);
+      const baseUrl = new URL(config.baseUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+      if (locationUrl.host === 'floci:4566' || locationUrl.host === 'localhost:4566') {
+        downloadUrl = joinUrl(baseUrl.toString(), `${locationUrl.pathname}${locationUrl.search}`);
+      }
+    } catch {
+      // Use raw location when URL parsing fails.
+    }
+
+    const codeResponse = await fetch(downloadUrl, { method: 'GET' });
+    if (!codeResponse.ok) {
+      const body = await codeResponse.text();
+      throw new Error(`Lambda code download failed (${codeResponse.status}): ${body.slice(0, 180)}`);
+    }
+
+    return new Uint8Array(await codeResponse.arrayBuffer());
+  }
+
+  async function getLambdaFunctionSourceFiles(functionName: string): Promise<{ path: string; text: string }[]> {
+    const response = await fetch(`/api/lambda-source/${encodeURIComponent(functionName)}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json,*/*',
+      },
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Lambda source fetch failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+    const payload = parseJsonBody(text);
+    const entriesRaw = Array.isArray(payload.entries) ? payload.entries : [];
+    return entriesRaw
+      .map((entry) => ({
+        path: String((entry as Record<string, unknown>).path || ''),
+        text: String((entry as Record<string, unknown>).text || ''),
+      }))
+      .filter((entry) => entry.path);
+  }
+
+  async function invokeLambda(functionName: string, payload: string): Promise<{ statusCode: number; functionError: string; logs: string; result: unknown; requestId: string }> {
     const response = await fetch(joinUrl(config.baseUrl, `/2015-03-31/functions/${encodeURIComponent(functionName)}/invocations`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json,*/*',
+        'X-Amz-Log-Type': 'Tail',
       },
       body: payload,
     });
@@ -229,6 +290,7 @@ export function createApiClient(config: ApiConfig) {
       functionError: response.headers.get('x-amz-function-error') || '',
       logs: decodedLogs,
       result: parseMaybeJson(text),
+      requestId: response.headers.get('x-amzn-requestid') || response.headers.get('x-amz-request-id') || '',
     };
   }
 
@@ -251,6 +313,17 @@ export function createApiClient(config: ApiConfig) {
       name: queueUrl.split('/').filter(Boolean).pop() || queueUrl,
       queueUrl,
     }));
+  }
+
+  async function createSqsQueue(queueName: string, attributes: Record<string, string> = {}): Promise<void> {
+    const params: Record<string, string> = { QueueName: queueName };
+    const entries = Object.entries(attributes).filter(([, value]) => value !== '');
+    entries.forEach(([key, value], index) => {
+      const i = index + 1;
+      params[`Attribute.${i}.Name`] = key;
+      params[`Attribute.${i}.Value`] = value;
+    });
+    await sqsAction('CreateQueue', params);
   }
 
   async function loadMessagesForQueue(queueUrl: string): Promise<SqsMessage[]> {
@@ -303,6 +376,38 @@ export function createApiClient(config: ApiConfig) {
       region: 'ca-central-1',
       creationDate: textContent(bucketNode, 'CreationDate'),
     }));
+  }
+
+  async function createS3Bucket(
+    bucketName: string,
+    options: { region?: string; acl?: string; objectLockEnabled?: boolean } = {}
+  ): Promise<void> {
+    const region = options.region || 'ca-central-1';
+    const body =
+      region && region !== 'us-east-1'
+        ? `<?xml version=\"1.0\" encoding=\"UTF-8\"?><CreateBucketConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><LocationConstraint>${region}</LocationConstraint></CreateBucketConfiguration>`
+        : undefined;
+
+    const headers: HeadersInit = {
+      'Content-Type': 'application/xml',
+    };
+    if (options.acl) {
+      headers['x-amz-acl'] = options.acl;
+    }
+    if (options.objectLockEnabled) {
+      headers['x-amz-bucket-object-lock-enabled'] = 'true';
+    }
+
+    const response = await fetch(joinUrl(config.baseUrl, `/${bucketName}`), {
+      method: 'PUT',
+      headers,
+      body,
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Create bucket failed (${response.status}): ${text.slice(0, 180)}`);
+    }
   }
 
   async function loadObjectsForBucketPrefix(bucketName: string, prefix: string): Promise<Listing> {
@@ -421,6 +526,11 @@ export function createApiClient(config: ApiConfig) {
     return textContent(doc, 'PublishResult > MessageId');
   }
 
+  async function createSnsTopic(name: string): Promise<string> {
+    const doc = await snsAction('CreateTopic', { Name: name });
+    return textContent(doc, 'CreateTopicResult > TopicArn');
+  }
+
   async function loadDynamoTables(): Promise<DynamoTableSummary[]> {
     const tables: DynamoTableSummary[] = [];
     let lastEvaluated = '';
@@ -497,6 +607,23 @@ export function createApiClient(config: ApiConfig) {
     return items.map((item) => decodeDynamoItem(item));
   }
 
+  async function createDynamoTable(tableName: string, partitionKeyName: string, sortKeyName = ''): Promise<string> {
+    const attributeDefinitions: Record<string, string>[] = [{ AttributeName: partitionKeyName, AttributeType: 'S' }];
+    const keySchema: Record<string, string>[] = [{ AttributeName: partitionKeyName, KeyType: 'HASH' }];
+    if (sortKeyName.trim()) {
+      attributeDefinitions.push({ AttributeName: sortKeyName.trim(), AttributeType: 'S' });
+      keySchema.push({ AttributeName: sortKeyName.trim(), KeyType: 'RANGE' });
+    }
+
+    const response = await dynamoAction<{ TableDescription?: Record<string, unknown> }>('CreateTable', {
+      TableName: tableName,
+      AttributeDefinitions: attributeDefinitions,
+      KeySchema: keySchema,
+      BillingMode: 'PAY_PER_REQUEST',
+    });
+    return String(response.TableDescription?.TableArn || '');
+  }
+
   async function listEventBuses(): Promise<EventBusSummary[]> {
     const response = await awsJsonAction<{ EventBuses?: Record<string, unknown>[] }>('AWSEvents.ListEventBuses', {});
     const items = Array.isArray(response.EventBuses) ? response.EventBuses : [];
@@ -544,6 +671,21 @@ export function createApiClient(config: ApiConfig) {
     return entries.map((entry) => String(entry.EventId || ''));
   }
 
+  async function createEventBus(name: string): Promise<string> {
+    const response = await awsJsonAction<{ EventBusArn?: string }>('AWSEvents.CreateEventBus', { Name: name });
+    return String(response.EventBusArn || '');
+  }
+
+  async function createEventRule(name: string, eventBusName: string, eventPattern: string): Promise<string> {
+    const response = await awsJsonAction<{ RuleArn?: string }>('AWSEvents.PutRule', {
+      Name: name,
+      EventBusName: eventBusName,
+      EventPattern: eventPattern,
+      State: 'ENABLED',
+    });
+    return String(response.RuleArn || '');
+  }
+
   async function listStepFunctionsStateMachines(): Promise<StepFunctionStateMachineSummary[]> {
     const response = await awsJsonAction<{ stateMachines?: Record<string, unknown>[] }>('AWSStepFunctions.ListStateMachines', {}, '1.0');
     const items = Array.isArray(response.stateMachines) ? response.stateMachines : [];
@@ -573,6 +715,15 @@ export function createApiClient(config: ApiConfig) {
       input,
     }, '1.0');
     return String(response.executionArn || '');
+  }
+
+  async function createStepFunctionsStateMachine(name: string, roleArn: string, definition: string, type: 'STANDARD' | 'EXPRESS' = 'STANDARD'): Promise<string> {
+    const response = await awsJsonAction<{ stateMachineArn?: string }>(
+      'AWSStepFunctions.CreateStateMachine',
+      { name, roleArn, definition, type },
+      '1.0'
+    );
+    return String(response.stateMachineArn || '');
   }
 
   async function listSsmParameters(): Promise<SsmParameterSummary[]> {
@@ -639,6 +790,15 @@ export function createApiClient(config: ApiConfig) {
     return String(response.VersionId || '');
   }
 
+  async function createSecret(name: string, secretString: string, description = ''): Promise<string> {
+    const response = await awsJsonAction<Record<string, unknown>>('secretsmanager.CreateSecret', {
+      Name: name,
+      SecretString: secretString,
+      Description: description,
+    });
+    return String(response.ARN || '');
+  }
+
   async function listLogGroups(): Promise<CloudWatchLogGroupSummary[]> {
     const response = await awsJsonAction<{ logGroups?: Record<string, unknown>[] }>('Logs_20140328.DescribeLogGroups', {});
     const items = Array.isArray(response.logGroups) ? response.logGroups : [];
@@ -676,33 +836,92 @@ export function createApiClient(config: ApiConfig) {
     }));
   }
 
+  async function createLogGroup(logGroupName: string): Promise<void> {
+    await awsJsonAction('Logs_20140328.CreateLogGroup', { logGroupName });
+  }
+
+  async function createLambdaFunction(name: string, role: string, zipBase64: string, runtime = 'nodejs18.x', handler = 'index.handler'): Promise<string> {
+    const response = await fetch(joinUrl(config.baseUrl, '/2015-03-31/functions/'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        FunctionName: name,
+        Runtime: runtime,
+        Role: role,
+        Handler: handler,
+        Code: {
+          ZipFile: zipBase64,
+        },
+        Publish: true,
+      }),
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Lambda CreateFunction failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+    const payload = parseJsonBody(text);
+    return String(payload.FunctionArn || '');
+  }
+
+  async function updateLambdaFunctionCode(name: string, zipBase64: string): Promise<void> {
+    const response = await fetch(joinUrl(config.baseUrl, `/2015-03-31/functions/${encodeURIComponent(name)}/code`), {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ZipFile: zipBase64,
+        Publish: true,
+      }),
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Lambda UpdateFunctionCode failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+  }
+
   return {
     getXml,
     sqsAction,
     deleteObject,
     objectUrl,
     loadQueues,
+    createSqsQueue,
     loadMessagesForQueue,
     deleteMessage,
     loadBuckets,
+    createS3Bucket,
     loadObjectsForBucketPrefix,
     listAllKeysForPrefix,
     loadSnsTopics,
     loadSnsSubscriptionsByTopic,
     publishSnsMessage,
+    createSnsTopic,
     loadDynamoTables,
     describeDynamoTable,
     scanDynamoTable,
     queryDynamoTableByPartitionKey,
+    createDynamoTable,
     listLambdaFunctions,
+    getLambdaFunctionCodeZip,
+    getLambdaFunctionSourceFiles,
     invokeLambda,
+    createLambdaFunction,
+    updateLambdaFunctionCode,
     listEventBuses,
     listEventRules,
     listEventTargetsByRule,
     putEventBridgeEvent,
+    createEventBus,
+    createEventRule,
     listStepFunctionsStateMachines,
     listStepFunctionsExecutions,
     startStepFunctionsExecution,
+    createStepFunctionsStateMachine,
     listSsmParameters,
     getSsmParameter,
     putSsmParameter,
@@ -710,8 +929,10 @@ export function createApiClient(config: ApiConfig) {
     describeSecret,
     getSecretValue,
     putSecretValue,
+    createSecret,
     listLogGroups,
     listLogStreams,
     filterLogEvents,
+    createLogGroup,
   };
 }

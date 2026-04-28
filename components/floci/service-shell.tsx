@@ -16,13 +16,15 @@ type ServiceShellProps = {
   activeSlug: string;
   title: string;
   description: string;
-  summaryCountLabel: string;
   search: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
+  headerTopActions?: ReactNode;
+  headerBottomContent?: ReactNode;
   onRefresh: () => void;
   refreshDisabled?: boolean;
   status: Status;
+  statusSlotContent?: ReactNode;
   children: ReactNode;
   contentClassName?: string;
 };
@@ -31,13 +33,15 @@ export function ServiceShell({
   activeSlug,
   title,
   description,
-  summaryCountLabel,
   search,
   onSearchChange,
   searchPlaceholder,
+  headerTopActions,
+  headerBottomContent,
   onRefresh,
   refreshDisabled = false,
   status,
+  statusSlotContent,
   children,
   contentClassName,
 }: ServiceShellProps) {
@@ -50,11 +54,14 @@ export function ServiceShell({
           <ServiceHeader
             title={title}
             description={description}
-            summaryCountLabel={summaryCountLabel}
             search={search}
             onSearchChange={onSearchChange}
             searchPlaceholder={searchPlaceholder}
+            topActions={headerTopActions}
+            bottomContent={headerBottomContent}
           />
+
+          {statusSlotContent}
 
           <ServiceStatusBanner type={status.type} message={status.message} />
 
