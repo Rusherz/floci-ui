@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
@@ -159,6 +159,7 @@ export default function LambdaPage() {
   const [editorError, setEditorError] = useState('');
   const [savingCode, setSavingCode] = useState(false);
   const [loadingCode, setLoadingCode] = useState(false);
+  const editorPreviewRef = useRef<HTMLPreElement | null>(null);
 
   const loadFunctions = useCallback(async () => {
     setLoading(true);
@@ -404,6 +405,13 @@ export default function LambdaPage() {
     return highlightCode(editorValue, selectedPath || 'index.js');
   }, [editorValue, selectedPath]);
 
+  const syncEditorPreviewScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
+    const preview = editorPreviewRef.current;
+    if (!preview) return;
+    preview.scrollTop = event.currentTarget.scrollTop;
+    preview.scrollLeft = event.currentTarget.scrollLeft;
+  }, []);
+
   useEffect(() => {
     if (mode !== 'edit' || !selectedFunctionName) return;
     void loadDeployedCode();
@@ -548,10 +556,11 @@ export default function LambdaPage() {
                 )}
               </div>
 
-              <div className='min-h-0 rounded-md border p-3'>
-                <div className='relative h-[58vh] overflow-hidden rounded-md border bg-slate-950/70'>
+              <div className='flex min-h-0 flex-col rounded-md border p-3'>
+                <div className='relative min-h-0 flex-1 overflow-hidden rounded-md border bg-slate-950/70'>
                   <pre
                     aria-hidden='true'
+                    ref={editorPreviewRef}
                     className='pointer-events-none h-full overflow-auto p-3 font-mono text-sm leading-6 text-slate-100'
                   >
                     <code dangerouslySetInnerHTML={{ __html: highlighted + '\n' }} />
@@ -560,8 +569,9 @@ export default function LambdaPage() {
                     value={editorValue}
                     onChange={(event) => setEditorValue(event.target.value)}
                     onBlur={applyEditorValueToEntry}
+                    onScroll={syncEditorPreviewScroll}
                     disabled={!selectedPath || !entries.find((entry) => entry.path === selectedPath)?.isText}
-                    className='absolute inset-0 h-full w-full resize-none bg-transparent p-3 font-mono text-sm leading-6 text-transparent caret-slate-100 outline-none'
+                    className='absolute inset-0 h-full w-full resize-none overflow-auto bg-transparent p-3 font-mono text-sm leading-6 text-transparent caret-slate-100 outline-none'
                     spellCheck={false}
                   />
                 </div>
