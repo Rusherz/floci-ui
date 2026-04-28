@@ -13,3 +13,6 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+
+# Local lambda fixtures
+lambdas/
