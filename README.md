@@ -1,6 +1,6 @@
 # Floci UI
 
-Next.js + shadcn UI for exploring SQS and S3 resources from local `floci`.
+Next.js + shadcn UI for exploring Floci resources across SQS, S3, SNS, DynamoDB, Lambda, EventBridge, Step Functions, SSM, Secrets Manager, and CloudWatch Logs.
 
 ## Stack
 
@@ -38,6 +38,20 @@ npm run dev
 
 - `GET /healthz` returns `{ ok: true, flociOrigin }`
 - `/floci/*` proxies to `FLOCI_ORIGIN`
+
+## App Routes
+
+- `/` service overview + element navigation
+- `/sqs` SQS service page
+- `/s3` S3 service page
+- `/sns` SNS service page
+- `/dynamodb` DynamoDB service page
+- `/lambda` Lambda service page
+- `/eventbridge` EventBridge service page
+- `/step-functions` Step Functions service page
+- `/ssm` SSM Parameter Store service page
+- `/secrets-manager` Secrets Manager service page
+- `/cloudwatch` CloudWatch Logs service page
 
 ## Build
 

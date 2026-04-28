@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Floci - SQS/S3 Navigator',
-  description: 'SQS and S3 explorer for local Floci instances',
+  title: 'Floci Ops Console',
+  description: 'Multi-service Floci console for local AWS-style elements',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -10,6 +10,112 @@ export type Queue = {
   queueUrl: string;
 };
 
+export type SnsTopic = {
+  arn: string;
+  name: string;
+};
+
+export type SnsSubscription = {
+  subscriptionArn: string;
+  topicArn: string;
+  protocol: string;
+  endpoint: string;
+};
+
+export type DynamoTableSummary = {
+  name: string;
+};
+
+export type DynamoKeyDefinition = {
+  name: string;
+  type: string;
+};
+
+export type DynamoTableDescription = {
+  name: string;
+  itemCount: number;
+  tableStatus: string;
+  keySchema: DynamoKeyDefinition[];
+};
+
+export type LambdaFunctionSummary = {
+  name: string;
+  runtime: string;
+  handler: string;
+  lastModified: string;
+  arn: string;
+};
+
+export type EventBusSummary = {
+  name: string;
+  arn: string;
+};
+
+export type EventRuleSummary = {
+  name: string;
+  arn: string;
+  eventBusName: string;
+  state: string;
+};
+
+export type EventTargetSummary = {
+  id: string;
+  arn: string;
+};
+
+export type StepFunctionStateMachineSummary = {
+  name: string;
+  arn: string;
+  type: string;
+  creationDate: string;
+};
+
+export type StepFunctionExecutionSummary = {
+  name: string;
+  arn: string;
+  status: string;
+  startDate: string;
+  stopDate: string;
+};
+
+export type SsmParameterSummary = {
+  name: string;
+  type: string;
+  lastModifiedDate: string;
+  version: number;
+};
+
+export type SecretSummary = {
+  name: string;
+  arn: string;
+  description: string;
+  lastChangedDate: string;
+};
+
+export type SecretDetails = {
+  arn: string;
+  name: string;
+  description: string;
+  versionIdsToStages: Record<string, string[]>;
+};
+
+export type CloudWatchLogGroupSummary = {
+  logGroupName: string;
+  storedBytes: number;
+  retentionInDays: number;
+};
+
+export type CloudWatchLogStreamSummary = {
+  logStreamName: string;
+  lastEventTimestamp: number;
+};
+
+export type CloudWatchLogEvent = {
+  timestamp: number;
+  message: string;
+  ingestionTime: number;
+};
+
 export type SqsMessage = {
   id: string;
   sentAt: string;

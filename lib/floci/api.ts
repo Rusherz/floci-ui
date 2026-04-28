@@ -1,5 +1,56 @@
-import type { ApiConfig, FileEntry, Listing, Queue, SqsMessage } from '@/lib/floci/types';
+import type {
+  ApiConfig,
+  DynamoTableDescription,
+  DynamoTableSummary,
+  FileEntry,
+  LambdaFunctionSummary,
+  Listing,
+  SecretDetails,
+  SecretSummary,
+  Queue,
+  StepFunctionExecutionSummary,
+  StepFunctionStateMachineSummary,
+  SsmParameterSummary,
+  SnsSubscription,
+  SnsTopic,
+  SqsMessage,
+  CloudWatchLogEvent,
+  CloudWatchLogGroupSummary,
+  CloudWatchLogStreamSummary,
+  EventBusSummary,
+  EventRuleSummary,
+  EventTargetSummary,
+} from '@/lib/floci/types';
 import { encodeS3KeyForPath, joinUrl, parseMaybeJson, parseXml, textContent, toIsoFromEpochMs } from '@/lib/floci/utils';
+
+function parseJsonBody(body: string): Record<string, unknown> {
+  if (!body.trim()) return {};
+
+  try {
+    return JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    throw new Error('Failed to parse JSON response');
+  }
+}
+
+function decodeDynamoAttribute(value: Record<string, unknown>): unknown {
+  if ('S' in value) return String(value.S || '');
+  if ('N' in value) return Number(value.N || 0);
+  if ('BOOL' in value) return Boolean(value.BOOL);
+  if ('NULL' in value) return null;
+  if ('L' in value && Array.isArray(value.L)) return value.L.map((item) => decodeDynamoAttribute((item || {}) as Record<string, unknown>));
+  if ('M' in value && value.M && typeof value.M === 'object') {
+    return Object.fromEntries(
+      Object.entries(value.M as Record<string, unknown>).map(([key, nested]) => [key, decodeDynamoAttribute((nested || {}) as Record<string, unknown>)])
+    );
+  }
+
+  return value;
+}
+
+function decodeDynamoItem(item: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(item).map(([key, value]) => [key, decodeDynamoAttribute((value || {}) as Record<string, unknown>)]));
+}
 
 export function createApiClient(config: ApiConfig) {
   function objectUrl(bucketName: string, key: string): string {
@@ -45,6 +96,140 @@ export function createApiClient(config: ApiConfig) {
     }
 
     return parseXml(text);
+  }
+
+  async function snsAction(action: string, params: Record<string, string> = {}): Promise<Document> {
+    const body = new URLSearchParams({
+      Action: action,
+      Version: '2010-03-31',
+      ...params,
+    });
+
+    const response = await fetch(joinUrl(config.baseUrl), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/xml,text/xml,*/*',
+      },
+      body: body.toString(),
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`SNS ${action} failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+
+    return parseXml(text);
+  }
+
+  async function dynamoAction<T>(action: string, payload: Record<string, unknown>): Promise<T> {
+    const response = await fetch(joinUrl(config.baseUrl), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.0',
+        'X-Amz-Target': `DynamoDB_20120810.${action}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await response.text();
+    const parsed = parseJsonBody(text);
+
+    if (!response.ok) {
+      throw new Error(`DynamoDB ${action} failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+
+    if (typeof parsed.__type === 'string' || typeof parsed.message === 'string') {
+      throw new Error(`DynamoDB ${action} error: ${String(parsed.message || parsed.__type)}`);
+    }
+
+    return parsed as T;
+  }
+
+  async function awsJsonAction<T>(target: string, payload: Record<string, unknown>, jsonVersion: '1.0' | '1.1' = '1.1'): Promise<T> {
+    const response = await fetch(joinUrl(config.baseUrl), {
+      method: 'POST',
+      headers: {
+        'Content-Type': `application/x-amz-json-${jsonVersion}`,
+        'X-Amz-Target': target,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await response.text();
+    const parsed = parseJsonBody(text);
+
+    if (!response.ok) {
+      throw new Error(`${target} failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+
+    if (typeof parsed.__type === 'string' || typeof parsed.message === 'string') {
+      throw new Error(`${target} error: ${String(parsed.message || parsed.__type)}`);
+    }
+
+    return parsed as T;
+  }
+
+  async function listLambdaFunctions(): Promise<LambdaFunctionSummary[]> {
+    const response = await fetch(joinUrl(config.baseUrl, '/2015-03-31/functions/'), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json,*/*',
+      },
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Lambda ListFunctions failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+
+    const payload = parseJsonBody(text);
+    const functions = Array.isArray(payload.Functions) ? payload.Functions : [];
+
+    return functions.map((entry) => {
+      const fn = (entry || {}) as Record<string, unknown>;
+      return {
+        name: String(fn.FunctionName || ''),
+        runtime: String(fn.Runtime || 'n/a'),
+        handler: String(fn.Handler || 'n/a'),
+        lastModified: String(fn.LastModified || ''),
+        arn: String(fn.FunctionArn || ''),
+      } satisfies LambdaFunctionSummary;
+    });
+  }
+
+  async function invokeLambda(functionName: string, payload: string): Promise<{ statusCode: number; functionError: string; logs: string; result: unknown }> {
+    const response = await fetch(joinUrl(config.baseUrl, `/2015-03-31/functions/${encodeURIComponent(functionName)}/invocations`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json,*/*',
+      },
+      body: payload,
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Lambda invoke failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+
+    const rawLogs = response.headers.get('x-amz-log-result') || '';
+    let decodedLogs = '';
+
+    if (rawLogs) {
+      try {
+        decodedLogs = atob(rawLogs);
+      } catch {
+        decodedLogs = '';
+      }
+    }
+
+    return {
+      statusCode: response.status,
+      functionError: response.headers.get('x-amz-function-error') || '',
+      logs: decodedLogs,
+      result: parseMaybeJson(text),
+    };
   }
 
   async function deleteObject(bucketName: string, key: string): Promise<void> {
@@ -201,6 +386,296 @@ export function createApiClient(config: ApiConfig) {
     return keys;
   }
 
+  async function loadSnsTopics(): Promise<SnsTopic[]> {
+    const doc = await snsAction('ListTopics');
+    return Array.from(doc.querySelectorAll('ListTopicsResult > Topics > member > TopicArn')).map((node) => {
+      const arn = node.textContent || '';
+      return {
+        arn,
+        name: arn.split(':').pop() || arn,
+      };
+    });
+  }
+
+  async function loadSnsSubscriptionsByTopic(topicArn: string): Promise<SnsSubscription[]> {
+    const doc = await snsAction('ListSubscriptionsByTopic', { TopicArn: topicArn });
+    return Array.from(doc.querySelectorAll('ListSubscriptionsByTopicResult > Subscriptions > member')).map((node) => ({
+      subscriptionArn: textContent(node, 'SubscriptionArn'),
+      topicArn: textContent(node, 'TopicArn'),
+      protocol: textContent(node, 'Protocol'),
+      endpoint: textContent(node, 'Endpoint'),
+    }));
+  }
+
+  async function publishSnsMessage(topicArn: string, message: string, subject: string): Promise<string> {
+    const params: Record<string, string> = {
+      TopicArn: topicArn,
+      Message: message,
+    };
+
+    if (subject.trim()) {
+      params.Subject = subject.trim();
+    }
+
+    const doc = await snsAction('Publish', params);
+    return textContent(doc, 'PublishResult > MessageId');
+  }
+
+  async function loadDynamoTables(): Promise<DynamoTableSummary[]> {
+    const tables: DynamoTableSummary[] = [];
+    let lastEvaluated = '';
+
+    while (true) {
+      const response = await dynamoAction<{ LastEvaluatedTableName?: string; TableNames?: string[] }>('ListTables',
+        lastEvaluated ? { ExclusiveStartTableName: lastEvaluated } : {});
+
+      const names = Array.isArray(response.TableNames) ? response.TableNames : [];
+      for (const name of names) {
+        tables.push({ name });
+      }
+
+      lastEvaluated = response.LastEvaluatedTableName || '';
+      if (!lastEvaluated) {
+        break;
+      }
+    }
+
+    return tables;
+  }
+
+  async function describeDynamoTable(tableName: string): Promise<DynamoTableDescription> {
+    const response = await dynamoAction<{ Table?: Record<string, unknown> }>('DescribeTable', { TableName: tableName });
+    const table = (response.Table || {}) as Record<string, unknown>;
+    const keySchemaRaw = Array.isArray(table.KeySchema) ? table.KeySchema : [];
+
+    return {
+      name: String(table.TableName || tableName),
+      itemCount: Number(table.ItemCount || 0),
+      tableStatus: String(table.TableStatus || 'UNKNOWN'),
+      keySchema: keySchemaRaw.map((entry) => {
+        const raw = (entry || {}) as Record<string, unknown>;
+        return {
+          name: String(raw.AttributeName || ''),
+          type: String(raw.KeyType || ''),
+        };
+      }),
+    };
+  }
+
+  async function scanDynamoTable(tableName: string, limit = 25): Promise<Record<string, unknown>[]> {
+    const response = await dynamoAction<{ Items?: Record<string, unknown>[] }>('Scan', {
+      TableName: tableName,
+      Limit: limit,
+    });
+
+    const items = Array.isArray(response.Items) ? response.Items : [];
+    return items.map((item) => decodeDynamoItem(item));
+  }
+
+  async function queryDynamoTableByPartitionKey(
+    tableName: string,
+    keyName: string,
+    keyType: 'S' | 'N',
+    keyValue: string,
+    limit = 25
+  ): Promise<Record<string, unknown>[]> {
+    const typedValue = keyType === 'N' ? { N: keyValue } : { S: keyValue };
+
+    const response = await dynamoAction<{ Items?: Record<string, unknown>[] }>('Query', {
+      TableName: tableName,
+      KeyConditionExpression: '#pk = :pk',
+      ExpressionAttributeNames: {
+        '#pk': keyName,
+      },
+      ExpressionAttributeValues: {
+        ':pk': typedValue,
+      },
+      Limit: limit,
+    });
+
+    const items = Array.isArray(response.Items) ? response.Items : [];
+    return items.map((item) => decodeDynamoItem(item));
+  }
+
+  async function listEventBuses(): Promise<EventBusSummary[]> {
+    const response = await awsJsonAction<{ EventBuses?: Record<string, unknown>[] }>('AWSEvents.ListEventBuses', {});
+    const items = Array.isArray(response.EventBuses) ? response.EventBuses : [];
+    return items.map((item) => ({
+      name: String(item.Name || ''),
+      arn: String(item.Arn || ''),
+    }));
+  }
+
+  async function listEventRules(eventBusName: string): Promise<EventRuleSummary[]> {
+    const response = await awsJsonAction<{ Rules?: Record<string, unknown>[] }>('AWSEvents.ListRules', eventBusName ? { EventBusName: eventBusName } : {});
+    const items = Array.isArray(response.Rules) ? response.Rules : [];
+    return items.map((item) => ({
+      name: String(item.Name || ''),
+      arn: String(item.Arn || ''),
+      eventBusName: String(item.EventBusName || ''),
+      state: String(item.State || 'UNKNOWN'),
+    }));
+  }
+
+  async function listEventTargetsByRule(ruleName: string, eventBusName: string): Promise<EventTargetSummary[]> {
+    const response = await awsJsonAction<{ Targets?: Record<string, unknown>[] }>('AWSEvents.ListTargetsByRule', {
+      Rule: ruleName,
+      EventBusName: eventBusName,
+    });
+    const items = Array.isArray(response.Targets) ? response.Targets : [];
+    return items.map((item) => ({
+      id: String(item.Id || ''),
+      arn: String(item.Arn || ''),
+    }));
+  }
+
+  async function putEventBridgeEvent(source: string, detailType: string, detail: string, eventBusName: string): Promise<string[]> {
+    const response = await awsJsonAction<{ Entries?: Record<string, unknown>[] }>('AWSEvents.PutEvents', {
+      Entries: [
+        {
+          Source: source,
+          DetailType: detailType,
+          Detail: detail,
+          EventBusName: eventBusName,
+        },
+      ],
+    });
+    const entries = Array.isArray(response.Entries) ? response.Entries : [];
+    return entries.map((entry) => String(entry.EventId || ''));
+  }
+
+  async function listStepFunctionsStateMachines(): Promise<StepFunctionStateMachineSummary[]> {
+    const response = await awsJsonAction<{ stateMachines?: Record<string, unknown>[] }>('AWSStepFunctions.ListStateMachines', {}, '1.0');
+    const items = Array.isArray(response.stateMachines) ? response.stateMachines : [];
+    return items.map((item) => ({
+      name: String(item.name || ''),
+      arn: String(item.stateMachineArn || ''),
+      type: String(item.type || ''),
+      creationDate: String(item.creationDate || ''),
+    }));
+  }
+
+  async function listStepFunctionsExecutions(stateMachineArn: string): Promise<StepFunctionExecutionSummary[]> {
+    const response = await awsJsonAction<{ executions?: Record<string, unknown>[] }>('AWSStepFunctions.ListExecutions', { stateMachineArn }, '1.0');
+    const items = Array.isArray(response.executions) ? response.executions : [];
+    return items.map((item) => ({
+      name: String(item.name || ''),
+      arn: String(item.executionArn || ''),
+      status: String(item.status || ''),
+      startDate: String(item.startDate || ''),
+      stopDate: String(item.stopDate || ''),
+    }));
+  }
+
+  async function startStepFunctionsExecution(stateMachineArn: string, input: string): Promise<string> {
+    const response = await awsJsonAction<{ executionArn?: string }>('AWSStepFunctions.StartExecution', {
+      stateMachineArn,
+      input,
+    }, '1.0');
+    return String(response.executionArn || '');
+  }
+
+  async function listSsmParameters(): Promise<SsmParameterSummary[]> {
+    const response = await awsJsonAction<{ Parameters?: Record<string, unknown>[] }>('AmazonSSM.DescribeParameters', {});
+    const items = Array.isArray(response.Parameters) ? response.Parameters : [];
+    return items.map((item) => ({
+      name: String(item.Name || ''),
+      type: String(item.Type || ''),
+      lastModifiedDate: String(item.LastModifiedDate || ''),
+      version: Number(item.Version || 0),
+    }));
+  }
+
+  async function getSsmParameter(name: string): Promise<string> {
+    const response = await awsJsonAction<{ Parameter?: Record<string, unknown> }>('AmazonSSM.GetParameter', { Name: name, WithDecryption: true });
+    return String(response.Parameter?.Value || '');
+  }
+
+  async function putSsmParameter(name: string, value: string, type: 'String' | 'SecureString' = 'String'): Promise<number> {
+    const response = await awsJsonAction<{ Version?: number }>('AmazonSSM.PutParameter', {
+      Name: name,
+      Value: value,
+      Type: type,
+      Overwrite: true,
+    });
+    return Number(response.Version || 0);
+  }
+
+  async function listSecrets(): Promise<SecretSummary[]> {
+    const response = await awsJsonAction<{ SecretList?: Record<string, unknown>[] }>('secretsmanager.ListSecrets', {});
+    const items = Array.isArray(response.SecretList) ? response.SecretList : [];
+    return items.map((item) => ({
+      name: String(item.Name || ''),
+      arn: String(item.ARN || ''),
+      description: String(item.Description || ''),
+      lastChangedDate: String(item.LastChangedDate || ''),
+    }));
+  }
+
+  async function describeSecret(secretId: string): Promise<SecretDetails> {
+    const response = await awsJsonAction<Record<string, unknown>>('secretsmanager.DescribeSecret', { SecretId: secretId });
+    const versionIdsToStagesRaw =
+      response.VersionIdsToStages && typeof response.VersionIdsToStages === 'object'
+        ? (response.VersionIdsToStages as Record<string, unknown>)
+        : {};
+    const versionIdsToStages = Object.fromEntries(
+      Object.entries(versionIdsToStagesRaw).map(([version, stages]) => [version, Array.isArray(stages) ? stages.map((stage) => String(stage)) : []])
+    );
+    return {
+      arn: String(response.ARN || ''),
+      name: String(response.Name || ''),
+      description: String(response.Description || ''),
+      versionIdsToStages,
+    };
+  }
+
+  async function getSecretValue(secretId: string): Promise<string> {
+    const response = await awsJsonAction<Record<string, unknown>>('secretsmanager.GetSecretValue', { SecretId: secretId });
+    return String(response.SecretString || '');
+  }
+
+  async function putSecretValue(secretId: string, value: string): Promise<string> {
+    const response = await awsJsonAction<Record<string, unknown>>('secretsmanager.PutSecretValue', { SecretId: secretId, SecretString: value });
+    return String(response.VersionId || '');
+  }
+
+  async function listLogGroups(): Promise<CloudWatchLogGroupSummary[]> {
+    const response = await awsJsonAction<{ logGroups?: Record<string, unknown>[] }>('Logs_20140328.DescribeLogGroups', {});
+    const items = Array.isArray(response.logGroups) ? response.logGroups : [];
+    return items.map((item) => ({
+      logGroupName: String(item.logGroupName || ''),
+      storedBytes: Number(item.storedBytes || 0),
+      retentionInDays: Number(item.retentionInDays || 0),
+    }));
+  }
+
+  async function listLogStreams(logGroupName: string): Promise<CloudWatchLogStreamSummary[]> {
+    const response = await awsJsonAction<{ logStreams?: Record<string, unknown>[] }>('Logs_20140328.DescribeLogStreams', {
+      logGroupName,
+      orderBy: 'LastEventTime',
+      descending: true,
+    });
+    const items = Array.isArray(response.logStreams) ? response.logStreams : [];
+    return items.map((item) => ({
+      logStreamName: String(item.logStreamName || ''),
+      lastEventTimestamp: Number(item.lastEventTimestamp || 0),
+    }));
+  }
+
+  async function filterLogEvents(logGroupName: string, filterPattern: string): Promise<CloudWatchLogEvent[]> {
+    const response = await awsJsonAction<{ events?: Record<string, unknown>[] }>('Logs_20140328.FilterLogEvents', {
+      logGroupName,
+      filterPattern,
+      limit: 100,
+    });
+    const items = Array.isArray(response.events) ? response.events : [];
+    return items.map((item) => ({
+      timestamp: Number(item.timestamp || 0),
+      message: String(item.message || ''),
+      ingestionTime: Number(item.ingestionTime || 0),
+    }));
+  }
+
   return {
     getXml,
     sqsAction,
@@ -212,5 +687,31 @@ export function createApiClient(config: ApiConfig) {
     loadBuckets,
     loadObjectsForBucketPrefix,
     listAllKeysForPrefix,
+    loadSnsTopics,
+    loadSnsSubscriptionsByTopic,
+    publishSnsMessage,
+    loadDynamoTables,
+    describeDynamoTable,
+    scanDynamoTable,
+    queryDynamoTableByPartitionKey,
+    listLambdaFunctions,
+    invokeLambda,
+    listEventBuses,
+    listEventRules,
+    listEventTargetsByRule,
+    putEventBridgeEvent,
+    listStepFunctionsStateMachines,
+    listStepFunctionsExecutions,
+    startStepFunctionsExecution,
+    listSsmParameters,
+    getSsmParameter,
+    putSsmParameter,
+    listSecrets,
+    describeSecret,
+    getSecretValue,
+    putSecretValue,
+    listLogGroups,
+    listLogStreams,
+    filterLogEvents,
   };
 }
