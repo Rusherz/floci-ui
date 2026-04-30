@@ -823,17 +823,37 @@ export function createApiClient(config: ApiConfig) {
   }
 
   async function filterLogEvents(logGroupName: string, filterPattern: string): Promise<CloudWatchLogEvent[]> {
-    const response = await awsJsonAction<{ events?: Record<string, unknown>[] }>('Logs_20140328.FilterLogEvents', {
-      logGroupName,
-      filterPattern,
-      limit: 100,
-    });
-    const items = Array.isArray(response.events) ? response.events : [];
-    return items.map((item) => ({
-      timestamp: Number(item.timestamp || 0),
-      message: String(item.message || ''),
-      ingestionTime: Number(item.ingestionTime || 0),
-    }));
+    const trimmedPattern = filterPattern.trim();
+    const pageLimit = 100;
+    const maxPages = 10;
+    const collected: Record<string, unknown>[] = [];
+    let nextToken = '';
+
+    for (let page = 0; page < maxPages; page += 1) {
+      const response = await awsJsonAction<{ events?: Record<string, unknown>[]; nextToken?: string }>('Logs_20140328.FilterLogEvents', {
+        logGroupName,
+        ...(trimmedPattern ? { filterPattern: trimmedPattern } : {}),
+        limit: pageLimit,
+        ...(nextToken ? { nextToken } : {}),
+      });
+      const items = Array.isArray(response.events) ? response.events : [];
+      collected.push(...items);
+
+      const token = typeof response.nextToken === 'string' ? response.nextToken : '';
+      if (!token || token === nextToken) break;
+      nextToken = token;
+    }
+
+    const newest = collected
+      .map((item) => ({
+        timestamp: Number(item.timestamp || 0),
+        message: String(item.message || ''),
+        ingestionTime: Number(item.ingestionTime || 0),
+      }))
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 200);
+
+    return newest;
   }
 
   async function createLogGroup(logGroupName: string): Promise<void> {

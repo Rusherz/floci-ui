@@ -26,7 +26,7 @@ export default function CloudWatchPage() {
   const [search, setSearch] = useState('');
   const [filterPattern, setFilterPattern] = useState('');
   const [eventSearch, setEventSearch] = useState('');
-  const [selectedEventIndex, setSelectedEventIndex] = useState(0);
+  const [selectedEventKey, setSelectedEventKey] = useState('');
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
   const [pollingEnabled, setPollingEnabled] = useState(true);
@@ -91,7 +91,6 @@ export default function CloudWatchPage() {
     try {
       const next = await api.filterLogEvents(selectedGroup, filterPattern.trim());
       setEvents(next);
-      setSelectedEventIndex(0);
       if (!silent) setStatus({ type: 'info', message: `Loaded ${next.length} event(s).` });
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to filter logs' });
@@ -159,8 +158,26 @@ export default function CloudWatchPage() {
     );
   }, [eventSearch, parsedEvents]);
 
-  const selectedEvent =
-    filteredEvents[Math.max(0, Math.min(selectedEventIndex, Math.max(0, filteredEvents.length - 1)))] || null;
+  const getEventKey = useCallback((event: { timestamp: number; ingestionTime: number; message: string }) => {
+    return `${event.timestamp}:${event.ingestionTime}:${event.message}`;
+  }, []);
+
+  useEffect(() => {
+    if (!filteredEvents.length) {
+      if (selectedEventKey) setSelectedEventKey('');
+      return;
+    }
+
+    if (!selectedEventKey || !filteredEvents.some((event) => getEventKey(event) === selectedEventKey)) {
+      setSelectedEventKey(getEventKey(filteredEvents[0]));
+    }
+  }, [filteredEvents, getEventKey, selectedEventKey]);
+
+  const selectedEvent = useMemo(() => {
+    if (!filteredEvents.length) return null;
+    if (!selectedEventKey) return filteredEvents[0];
+    return filteredEvents.find((event) => getEventKey(event) === selectedEventKey) || filteredEvents[0];
+  }, [filteredEvents, getEventKey, selectedEventKey]);
 
   useEffect(() => {
     let rafId = 0;
@@ -276,12 +293,12 @@ export default function CloudWatchPage() {
             ) : (
               <div className='flex h-full min-h-0 flex-col gap-2 overflow-auto pr-1'>
                 {filteredEvents.map((event, index) => {
-                  const active = index === selectedEventIndex;
+                  const active = getEventKey(event) === selectedEventKey;
                   return (
                     <button
                       key={`${event.timestamp}-${event.ingestionTime}-${index}`}
                       type='button'
-                      onClick={() => setSelectedEventIndex(index)}
+                      onClick={() => setSelectedEventKey(getEventKey(event))}
                       className={cn(
                         'w-full rounded-md border px-3 py-2 text-left transition',
                         active ? 'border-primary bg-primary/20' : 'border-border bg-background hover:bg-accent'
