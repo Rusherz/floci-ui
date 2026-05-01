@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { ExternalLink, Folder, Trash2 } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
@@ -11,7 +11,6 @@ import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
@@ -61,7 +60,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
 
   const [bootstrapped, setBootstrapped] = useState(false);
   const [banner, setBanner] = useState<Banner>({ type: null, message: '' });
-  const [pollProgress, setPollProgress] = useState(0);
   const [confirmState, setConfirmState] = useState<ConfirmState>({
     open: false,
     title: 'Confirm',
@@ -71,6 +69,8 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
   const [createBucketOpen, setCreateBucketOpen] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [selectedMessageKeys, setSelectedMessageKeys] = useState<Set<string>>(new Set());
+  const [selectedObjectKeys, setSelectedObjectKeys] = useState<Set<string>>(new Set());
   const [sqsAdvancedOpen, setSqsAdvancedOpen] = useState(false);
   const [s3AdvancedOpen, setS3AdvancedOpen] = useState(false);
   const [sqsSettings, setSqsSettings] = useState({
@@ -88,7 +88,8 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
   });
 
   const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
-  const pollProgressRef = useRef(0);
+  const lastMessageAnchorRef = useRef<number | null>(null);
+  const lastObjectAnchorRef = useRef<number | null>(null);
 
   const commitState = useCallback((recipe: (draft: AppState) => void) => {
     const next = structuredClone(stateRef.current);
@@ -279,16 +280,21 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
     }
   }, [clearS3SearchState, commitState, ensureObjectsLoadedForBucketPrefix, getSelectedBucket, setStatus]);
 
-  const refreshCurrentView = useCallback(async () => {
+  const refreshCurrentView = useCallback(async (options?: { silent?: boolean }) => {
     const snapshot = stateRef.current;
+    const silent = options?.silent ?? false;
 
-    commitState((draft) => {
-      draft.loading = true;
-    });
+    if (!silent) {
+      commitState((draft) => {
+        draft.loading = true;
+      });
+    }
 
     try {
       if (snapshot.view === VIEWS.sqs) {
-        setStatus('Loading SQS data...', 'info');
+        if (!silent) {
+          setStatus('Loading SQS data...', 'info');
+        }
 
         const queues = await api.loadQueues();
         const selectedQueue = clampIndex(snapshot.selectedQueue, queues.length);
@@ -311,30 +317,47 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
           draft.polling.nextPollAt = Date.now() + draft.polling.intervalMs;
         });
 
-        setStatus(`Loaded ${queues.length} queue(s).`, 'info');
+        if (!silent) {
+          setStatus(`Loaded ${queues.length} queue(s).`, 'info');
+        }
         return;
       }
 
-      setStatus('Loading S3 data...', 'info');
+      if (!silent) {
+        setStatus('Loading S3 data...', 'info');
+      }
       const buckets = await api.loadBuckets();
       const selectedBucket = clampIndex(snapshot.selectedBucket, buckets.length);
 
-      commitState((draft) => {
-        draft.s3.buckets = buckets;
-        draft.selectedBucket = selectedBucket;
-        draft.s3.entriesByLocation = {};
-        draft.s3.selectedObject = null;
-        draft.s3.allKeysByBucket = {};
-        draft.s3.searchResults = null;
-        draft.s3.searchLoading = false;
-        draft.s3.searchRequestId += 1;
+      if (silent) {
+        commitState((draft) => {
+          draft.s3.buckets = buckets;
+          draft.selectedBucket = selectedBucket;
 
-        for (const bucket of buckets) {
-          if (draft.s3.prefixByBucket[bucket.name] === undefined) {
-            draft.s3.prefixByBucket[bucket.name] = '';
+          for (const bucket of buckets) {
+            if (draft.s3.prefixByBucket[bucket.name] === undefined) {
+              draft.s3.prefixByBucket[bucket.name] = '';
+            }
           }
-        }
-      });
+        });
+      } else {
+        commitState((draft) => {
+          draft.s3.buckets = buckets;
+          draft.selectedBucket = selectedBucket;
+          draft.s3.entriesByLocation = {};
+          draft.s3.selectedObject = null;
+          draft.s3.allKeysByBucket = {};
+          draft.s3.searchResults = null;
+          draft.s3.searchLoading = false;
+          draft.s3.searchRequestId += 1;
+
+          for (const bucket of buckets) {
+            if (draft.s3.prefixByBucket[bucket.name] === undefined) {
+              draft.s3.prefixByBucket[bucket.name] = '';
+            }
+          }
+        });
+      }
 
       const current = stateRef.current;
       const selected = current.s3.buckets[current.selectedBucket];
@@ -343,13 +366,17 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         await ensureObjectsLoadedForBucketPrefix(selected.name, prefix);
       }
 
-      setStatus(`Loaded ${buckets.length} bucket(s).`, 'info');
+      if (!silent) {
+        setStatus(`Loaded ${buckets.length} bucket(s).`, 'info');
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to refresh view', 'error');
     } finally {
-      commitState((draft) => {
-        draft.loading = false;
-      });
+      if (!silent) {
+        commitState((draft) => {
+          draft.loading = false;
+        });
+      }
     }
   }, [api, commitState, ensureObjectsLoadedForBucketPrefix, extractQueueUrl, setStatus]);
 
@@ -377,20 +404,22 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
     [commitState, runS3SearchForCurrentBucket]
   );
 
-  const handleRefresh = useCallback(async () => {
-    commitState((draft) => {
-      if (draft.view === VIEWS.sqs) {
-        draft.sqs.messagesByQueue = {};
-      } else {
-        draft.s3.entriesByLocation = {};
-        draft.s3.selectedObject = null;
-        draft.s3.searchResults = null;
-        draft.s3.searchLoading = false;
-        draft.s3.searchRequestId += 1;
-      }
-    });
+  const handleRefresh = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      commitState((draft) => {
+        if (draft.view === VIEWS.sqs) {
+          draft.sqs.messagesByQueue = {};
+        } else {
+          draft.s3.entriesByLocation = {};
+          draft.s3.selectedObject = null;
+          draft.s3.searchResults = null;
+          draft.s3.searchLoading = false;
+          draft.s3.searchRequestId += 1;
+        }
+      });
+    }
 
-    await refreshCurrentView();
+    await refreshCurrentView({ silent: options?.silent });
   }, [commitState, refreshCurrentView]);
 
   const handleSelectQueue = useCallback(
@@ -524,16 +553,24 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
     const snapshot = stateRef.current;
     const queue = getFilteredQueues(snapshot)[snapshot.selectedQueue];
     const messages = queue ? snapshot.sqs.messagesByQueue[queue.name] || [] : [];
-    const message = messages[snapshot.selectedMessage];
-
-    const receiptHandle = message?.raw?.receiptHandle;
-    const messageId = message?.id;
-
-    if (!queue || !message || !receiptHandle || !messageId) {
+    if (!queue || !messages.length) {
+      return;
+    }
+    const multiActive = selectedMessageKeys.size > 1;
+    const targetMessages = multiActive
+      ? messages.filter((message, index) => selectedMessageKeys.has(message.raw?.receiptHandle || `${message.id}:${index}`))
+      : [messages[snapshot.selectedMessage]].filter(Boolean);
+    const validTargets = targetMessages.filter((message) => message?.raw?.receiptHandle && message?.id);
+    if (!validTargets.length) {
       return;
     }
 
-    const confirmed = await confirmDialog(`Delete message ${message.id} from ${queue.name}?`, 'Delete Message');
+    const confirmed = await confirmDialog(
+      multiActive
+        ? `Delete ${validTargets.length} messages from ${queue.name}?`
+        : `Delete message ${validTargets[0].id} from ${queue.name}?`,
+      multiActive ? 'Delete Messages' : 'Delete Message'
+    );
     if (!confirmed) {
       return;
     }
@@ -545,18 +582,20 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
 
       const queueUrl = queue.queueUrl || extractQueueUrl(queue.name);
       const latestMessages = await api.loadMessagesForQueue(queueUrl);
-      const latestMatch = latestMessages.find((candidate) => candidate.id === messageId);
-      const freshReceiptHandle = latestMatch?.raw?.receiptHandle || receiptHandle;
-
-      await api.deleteMessage(queueUrl, freshReceiptHandle);
+      for (const message of validTargets) {
+        const latestMatch = latestMessages.find((candidate) => candidate.id === message.id);
+        const freshReceiptHandle = latestMatch?.raw?.receiptHandle || message.raw.receiptHandle;
+        await api.deleteMessage(queueUrl, freshReceiptHandle);
+      }
 
       const refreshed = await api.loadMessagesForQueue(queueUrl);
       commitState((draft) => {
         draft.sqs.messagesByQueue[queue.name] = refreshed;
         draft.selectedMessage = 0;
       });
+      setSelectedMessageKeys(new Set());
 
-      setStatus(`Deleted message ${message.id}`, 'info');
+      setStatus(multiActive ? `Deleted ${validTargets.length} messages.` : `Deleted message ${validTargets[0].id}`, 'info');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to delete message', 'error');
     } finally {
@@ -564,7 +603,7 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         draft.loading = false;
       });
     }
-  }, [api, commitState, confirmDialog, extractQueueUrl, getFilteredQueues, setStatus]);
+  }, [api, commitState, confirmDialog, extractQueueUrl, getFilteredQueues, selectedMessageKeys, setStatus]);
 
   const handleCreateQueue = useCallback(
     async (rawName: string) => {
@@ -824,7 +863,12 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         return;
       }
 
-      const confirmed = await confirmDialog(`Delete ${key} from ${bucket.name}?`, 'Delete Object');
+      const multiActive = selectedObjectKeys.size > 1;
+      const keysToDeleteTargets = multiActive ? Array.from(selectedObjectKeys) : [key];
+      const confirmed = await confirmDialog(
+        multiActive ? `Delete ${keysToDeleteTargets.length} objects from ${bucket.name}?` : `Delete ${key} from ${bucket.name}?`,
+        multiActive ? 'Delete Objects' : 'Delete Object'
+      );
       if (!confirmed) {
         return;
       }
@@ -834,9 +878,13 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
           draft.loading = true;
         });
 
-        const nestedPrefix = key.endsWith('/') ? key : `${key}/`;
-        const nestedKeys = await listAllKeysForPrefix(bucket.name, nestedPrefix);
-        const keysToDelete = Array.from(new Set([key, ...nestedKeys]));
+        const expandedKeys: string[] = [];
+        for (const targetKey of keysToDeleteTargets) {
+          const nestedPrefix = targetKey.endsWith('/') ? targetKey : `${targetKey}/`;
+          const nestedKeys = await listAllKeysForPrefix(bucket.name, nestedPrefix);
+          expandedKeys.push(targetKey, ...nestedKeys);
+        }
+        const keysToDelete = Array.from(new Set(expandedKeys));
 
         for (const deleteKey of keysToDelete) {
           await api.deleteObject(bucket.name, deleteKey);
@@ -844,10 +892,11 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         clearBucketCache(bucket.name);
 
         commitState((draft) => {
-          if (draft.s3.selectedObject?.key === key) {
+          if (draft.s3.selectedObject?.key && keysToDelete.includes(draft.s3.selectedObject.key)) {
             draft.s3.selectedObject = null;
           }
         });
+        setSelectedObjectKeys(new Set());
 
         const prefix = stateRef.current.s3.prefixByBucket[bucket.name] || '';
         await ensureObjectsLoadedForBucketPrefix(bucket.name, prefix);
@@ -866,43 +915,18 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         });
       }
     },
-    [api, clearBucketCache, commitState, confirmDialog, ensureObjectsLoadedForBucketPrefix, getSelectedBucket, listAllKeysForPrefix, runS3SearchForCurrentBucket, setStatus]
+    [api, clearBucketCache, commitState, confirmDialog, ensureObjectsLoadedForBucketPrefix, getSelectedBucket, listAllKeysForPrefix, runS3SearchForCurrentBucket, selectedObjectKeys, setStatus]
   );
-
-  const pollSelectedQueue = useCallback(async () => {
-    const snapshot = stateRef.current;
-    if (snapshot.view !== VIEWS.sqs || snapshot.loading || snapshot.polling.running) {
-      return;
-    }
-
-    const queue = getFilteredQueues(snapshot)[snapshot.selectedQueue];
-    if (!queue) {
-      return;
-    }
-
-    commitState((draft) => {
-      draft.polling.running = true;
-    });
-
-    try {
-      await loadMessagesForQueue(queue, true);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Failed polling selected queue', 'error');
-    } finally {
-      commitState((draft) => {
-        draft.polling.running = false;
-        draft.polling.nextPollAt = Date.now() + draft.polling.intervalMs;
-      });
-    }
-  }, [commitState, getFilteredQueues, loadMessagesForQueue, setStatus]);
 
   const filteredQueues = useMemo(() => getFilteredQueues(state), [getFilteredQueues, state]);
   const selectedQueue = filteredQueues[clampIndex(state.selectedQueue, filteredQueues.length)] || null;
   const selectedQueueMessages = selectedQueue ? state.sqs.messagesByQueue[selectedQueue.name] || [] : [];
   const selectedMessage = selectedQueueMessages[clampIndex(state.selectedMessage, selectedQueueMessages.length)] || null;
+  const messageMultiSelectActive = selectedMessageKeys.size > 1;
 
   const selectedBucket = state.s3.buckets[clampIndex(state.selectedBucket, state.s3.buckets.length)] || null;
   const selectedPrefix = selectedBucket ? state.s3.prefixByBucket[selectedBucket.name] || '' : '';
+  const objectMultiSelectActive = selectedObjectKeys.size > 1;
   const selectedListing = useMemo(
     () =>
       selectedBucket
@@ -995,42 +1019,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
   }, [selectedPrefix]);
 
   useEffect(() => {
-    let rafId = 0;
-
-    const tick = () => {
-      const snapshot = stateRef.current;
-
-      if (!snapshot.polling.enabled || snapshot.view !== VIEWS.sqs) {
-        if (pollProgressRef.current !== 0) {
-          pollProgressRef.current = 0;
-          setPollProgress(0);
-        }
-      } else {
-        const remaining = Math.max(0, snapshot.polling.nextPollAt - Date.now());
-        const pct = ((snapshot.polling.intervalMs - remaining) / snapshot.polling.intervalMs) * 100;
-        const clamped = Math.max(0, Math.min(100, pct));
-
-        if (Math.abs(clamped - pollProgressRef.current) >= 0.5) {
-          pollProgressRef.current = clamped;
-          setPollProgress(clamped);
-        }
-      }
-
-      if (snapshot.polling.enabled && snapshot.view === VIEWS.sqs && !snapshot.polling.running && !snapshot.loading && Date.now() >= snapshot.polling.nextPollAt) {
-        void pollSelectedQueue();
-      }
-
-      rafId = window.requestAnimationFrame(tick);
-    };
-
-    rafId = window.requestAnimationFrame(tick);
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [pollSelectedQueue]);
-
-  useEffect(() => {
     const saved = loadUiState(STORAGE_KEYS.uiState);
     if (saved) {
       commitState((draft) => {
@@ -1081,23 +1069,94 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
   ]);
 
   const handleSelectMessage = useCallback(
-    (index: number) => {
+    (index: number, event?: MouseEvent<HTMLButtonElement>) => {
+      const withRange = Boolean(event?.shiftKey);
+      const withToggle = Boolean(event?.metaKey || event?.ctrlKey);
+      if (withRange && event) {
+        event.preventDefault();
+      }
+      const snapshot = stateRef.current;
+      const queue = getFilteredQueues(snapshot)[snapshot.selectedQueue];
+      const messages = queue ? snapshot.sqs.messagesByQueue[queue.name] || [] : [];
+      const message = messages[index];
+      if (!message) return;
+      const key = message.raw?.receiptHandle || `${message.id}:${index}`;
+
+      setSelectedMessageKeys((prev) => {
+        const next = new Set(prev);
+        if (withRange && lastMessageAnchorRef.current !== null) {
+          const start = Math.min(lastMessageAnchorRef.current, index);
+          const end = Math.max(lastMessageAnchorRef.current, index);
+          for (let i = start; i <= end; i += 1) {
+            const candidate = messages[i];
+            if (!candidate) continue;
+            next.add(candidate.raw?.receiptHandle || `${candidate.id}:${i}`);
+          }
+        } else if (withToggle) {
+          if (next.has(key)) {
+            next.delete(key);
+          } else {
+            next.add(key);
+          }
+          lastMessageAnchorRef.current = index;
+        } else {
+          next.clear();
+          next.add(key);
+          lastMessageAnchorRef.current = index;
+        }
+        return next;
+      });
+
       commitState((draft) => {
         draft.selectedMessage = index;
       });
     },
-    [commitState]
+    [commitState, getFilteredQueues]
   );
 
   const handleSelectFile = useCallback(
-    (key: string) => {
+    (key: string, event?: MouseEvent<HTMLDivElement>) => {
       const snapshot = stateRef.current;
       const file = renderedFileByKey[key];
       const { bucket } = getSelectedBucket(snapshot);
+      const withRange = Boolean(event?.shiftKey);
+      const withToggle = Boolean(event?.metaKey || event?.ctrlKey);
+      if (withRange && event) {
+        event.preventDefault();
+      }
+      const files = objectViewModel.files;
 
       if (!file || !bucket) {
         return;
       }
+
+      setSelectedObjectKeys((prev) => {
+        const next = new Set(prev);
+        const index = files.findIndex((candidate) => candidate.key === key);
+        if (index < 0) return next;
+
+        if (withRange && lastObjectAnchorRef.current !== null) {
+          const start = Math.min(lastObjectAnchorRef.current, index);
+          const end = Math.max(lastObjectAnchorRef.current, index);
+          for (let i = start; i <= end; i += 1) {
+            const candidate = files[i];
+            if (!candidate) continue;
+            next.add(candidate.key);
+          }
+        } else if (withToggle) {
+          if (next.has(key)) {
+            next.delete(key);
+          } else {
+            next.add(key);
+          }
+          lastObjectAnchorRef.current = index;
+        } else {
+          next.clear();
+          next.add(key);
+          lastObjectAnchorRef.current = index;
+        }
+        return next;
+      });
 
       commitState((draft) => {
         draft.s3.selectedObject = {
@@ -1106,17 +1165,18 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         };
       });
     },
-    [commitState, getSelectedBucket, renderedFileByKey]
+    [commitState, getSelectedBucket, objectViewModel.files, renderedFileByKey]
   );
 
-  const togglePolling = useCallback(() => {
-    commitState((draft) => {
-      draft.polling.enabled = !draft.polling.enabled;
-      if (draft.polling.enabled) {
-        draft.polling.nextPollAt = Date.now() + draft.polling.intervalMs;
-      }
-    });
-  }, [commitState]);
+  useEffect(() => {
+    setSelectedMessageKeys(new Set());
+    lastMessageAnchorRef.current = null;
+  }, [state.selectedQueue, selectedQueue?.name]);
+
+  useEffect(() => {
+    setSelectedObjectKeys(new Set());
+    lastObjectAnchorRef.current = null;
+  }, [selectedBucket?.name, selectedPrefix, state.search]);
 
   const activeViewLabel = state.view === VIEWS.sqs ? 'SQS' : 'S3';
   const activeViewDescription =
@@ -1132,17 +1192,9 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
         void handleSearchChange(value);
       }}
       searchPlaceholder={state.view === VIEWS.sqs ? 'Search queues...' : 'Search objects or path...'}
-      headerTopActions={
-        state.view === VIEWS.sqs ? (
-          <Button variant='outline' size='sm' onClick={togglePolling}>
-            {state.polling.enabled ? 'Pause' : 'Resume'}
-          </Button>
-        ) : undefined
-      }
-      statusSlotContent={
-        state.view === VIEWS.sqs ? <Progress value={pollProgress} className='rounded-l-none rounded-r-full' /> : undefined
-      }
-      onRefresh={() => void handleRefresh()}
+      pollingIntervalMs={state.polling.intervalMs}
+      pollingDefaultEnabled={state.view === VIEWS.sqs}
+      onRefresh={(options) => void handleRefresh(options)}
       refreshDisabled={state.loading}
       status={banner}
       contentClassName='overflow-hidden p-4 md:p-6'
@@ -1205,14 +1257,15 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                   ) : (
                     <div className='flex h-full min-h-0 flex-col gap-2 overflow-auto pr-1'>
                       {selectedQueueMessages.map((message, index) => {
-                        const active = index === clampIndex(state.selectedMessage, selectedQueueMessages.length);
+                        const selectionKey = message.raw?.receiptHandle || `${message.id}:${index}`;
+                        const active = selectedMessageKeys.has(selectionKey) || (!selectedMessageKeys.size && index === clampIndex(state.selectedMessage, selectedQueueMessages.length));
                         return (
                           <button
                             key={message.id}
                             type='button'
-                            onClick={() => handleSelectMessage(index)}
+                            onClick={(event) => handleSelectMessage(index, event)}
                             className={cn(
-                              'w-full rounded-md border px-3 py-2 text-left text-sm transition',
+                              'w-full select-none rounded-md border px-3 py-2 text-left text-sm transition focus:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
                               active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-accent'
                             )}
                           >
@@ -1235,7 +1288,7 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                       size='sm'
                       aria-label='Delete selected message'
                       onClick={() => void handleDeleteMessage()}
-                      disabled={!selectedQueue || !selectedMessage?.raw?.receiptHandle}
+                      disabled={!selectedQueue || (!selectedMessage?.raw?.receiptHandle && !selectedMessageKeys.size)}
                     >
                       <Trash2 className='size-4' />
                     </Button>
@@ -1244,7 +1297,7 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                 <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
                   <ScrollableCodeBlock
                     content={
-                      selectedQueue && selectedMessage
+                      !messageMultiSelectActive && selectedQueue && selectedMessage
                         ? JSON.stringify(
                             {
                               queue: selectedQueue.name,
@@ -1254,7 +1307,9 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                             null,
                             2
                           )
-                        : 'Select a message.'
+                        : messageMultiSelectActive
+                          ? 'Preview disabled while multi-select is active.'
+                          : 'Select a message.'
                     }
                     fillContainer
                   />
@@ -1383,7 +1438,9 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                       ))}
 
                       {objectViewModel.files.map((file) => {
-                        const active = state.s3.selectedObject?.bucket === selectedBucket?.name && state.s3.selectedObject?.key === file.key;
+                        const active =
+                          selectedObjectKeys.has(file.key) ||
+                          (!selectedObjectKeys.size && state.s3.selectedObject?.bucket === selectedBucket?.name && state.s3.selectedObject?.key === file.key);
 
                         return (
                           <div
@@ -1391,10 +1448,10 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                             role='button'
                             tabIndex={0}
                             className={cn(
-                              'cursor-pointer rounded-md border p-2 text-sm transition',
+                              'cursor-pointer select-none rounded-md border p-2 text-sm transition focus:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
                               active ? 'border-primary bg-accent text-accent-foreground' : 'border-border bg-background hover:bg-accent'
                             )}
-                            onClick={() => handleSelectFile(file.key)}
+                            onClick={(event) => handleSelectFile(file.key, event)}
                             onKeyDown={(event) => {
                               if (event.key === 'Enter' || event.key === ' ') {
                                 event.preventDefault();
@@ -1443,13 +1500,13 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                 <CardHeader>
                   <div className='flex items-center justify-between gap-2'>
                     <CardTitle className='text-base'>Object Preview</CardTitle>
-                    {state.s3.selectedObject && <Badge variant='secondary'>{state.s3.selectedObject.name}</Badge>}
+                    {objectMultiSelectActive ? <Badge variant='secondary'>Multi-select</Badge> : state.s3.selectedObject ? <Badge variant='secondary'>{state.s3.selectedObject.name}</Badge> : null}
                   </div>
                 </CardHeader>
                 <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
                   <ScrollableCodeBlock
                     content={
-                      selectedBucket && state.s3.selectedObject
+                      !objectMultiSelectActive && selectedBucket && state.s3.selectedObject
                         ? JSON.stringify(
                             {
                               bucket: selectedBucket.name,
@@ -1464,7 +1521,9 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                             null,
                             2
                           )
-                        : 'Select an object.'
+                        : objectMultiSelectActive
+                          ? 'Preview disabled while multi-select is active.'
+                          : 'Select an object.'
                     }
                     fillContainer
                   />
@@ -1613,8 +1672,4 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
 
 export function SqsOpsPage() {
   return <OpsConsoleBase view={VIEWS.sqs} />;
-}
-
-export function S3OpsPage() {
-  return <OpsConsoleBase view={VIEWS.s3} />;
 }

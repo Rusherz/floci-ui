@@ -114,6 +114,8 @@ export type CloudWatchLogEvent = {
   timestamp: number;
   message: string;
   ingestionTime: number;
+  eventId: string;
+  logStreamName: string;
 };
 
 export type SqsMessage = {

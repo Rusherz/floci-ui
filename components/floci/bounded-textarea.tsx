@@ -2,6 +2,7 @@
 
 import type { TextareaHTMLAttributes } from 'react';
 
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
 type BoundedTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
@@ -11,10 +12,10 @@ type BoundedTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
 
 export function BoundedTextarea({ className, minHeightClassName = 'min-h-[120px]', maxHeightClassName = 'max-h-[42vh]', ...props }: BoundedTextareaProps) {
   return (
-    <textarea
+    <Textarea
       {...props}
       className={cn(
-        'w-full resize-y rounded-md border bg-background p-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'resize-y',
         minHeightClassName,
         maxHeightClassName,
         className

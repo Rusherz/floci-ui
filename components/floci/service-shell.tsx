@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { FlociSidebar } from '@/components/floci/floci-sidebar';
 import { ServiceHeader } from '@/components/floci/service-header';
@@ -12,6 +12,11 @@ type Status = {
   message: string;
 };
 
+type RefreshOptions = {
+  silent?: boolean;
+  source?: 'manual' | 'poll';
+};
+
 type ServiceShellProps = {
   activeSlug: string;
   title: string;
@@ -21,8 +26,10 @@ type ServiceShellProps = {
   searchPlaceholder: string;
   headerTopActions?: ReactNode;
   headerBottomContent?: ReactNode;
-  onRefresh: () => void;
+  onRefresh: (options?: RefreshOptions) => void | Promise<void>;
   refreshDisabled?: boolean;
+  pollingIntervalMs?: number;
+  pollingDefaultEnabled?: boolean;
   status: Status;
   statusSlotContent?: ReactNode;
   children: ReactNode;
@@ -40,15 +47,92 @@ export function ServiceShell({
   headerBottomContent,
   onRefresh,
   refreshDisabled = false,
+  pollingIntervalMs = 5000,
+  pollingDefaultEnabled = false,
   status,
   statusSlotContent,
   children,
   contentClassName,
 }: ServiceShellProps) {
+  const [pollingEnabled, setPollingEnabled] = useState(pollingDefaultEnabled);
+  const [currentPollingIntervalMs, setCurrentPollingIntervalMs] = useState(pollingIntervalMs);
+  const [pollProgress, setPollProgress] = useState(0);
+  const pollProgressRef = useRef(0);
+  const nextPollAtRef = useRef(0);
+  const onRefreshRef = useRef(onRefresh);
+
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
+
+  useEffect(() => {
+    setPollingEnabled(pollingDefaultEnabled);
+    setCurrentPollingIntervalMs(pollingIntervalMs);
+    nextPollAtRef.current = Date.now() + pollingIntervalMs;
+  }, [pollingDefaultEnabled, pollingIntervalMs, activeSlug]);
+
+  const togglePolling = useCallback(() => {
+    setPollingEnabled((enabled) => {
+      const next = !enabled;
+      if (next) {
+        nextPollAtRef.current = Date.now() + currentPollingIntervalMs;
+      } else {
+        pollProgressRef.current = 0;
+        setPollProgress(0);
+      }
+      return next;
+    });
+  }, [currentPollingIntervalMs]);
+
+  const updatePollingIntervalMs = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return;
+    const clamped = Math.max(250, Math.round(value));
+    setCurrentPollingIntervalMs(clamped);
+    nextPollAtRef.current = Date.now() + clamped;
+  }, []);
+
+  useEffect(() => {
+    let rafId = 0;
+    let running = false;
+
+    const tick = () => {
+      if (!pollingEnabled) {
+        if (pollProgressRef.current !== 0) {
+          pollProgressRef.current = 0;
+          setPollProgress(0);
+        }
+      } else {
+        const remaining = Math.max(0, nextPollAtRef.current - Date.now());
+        const pct = ((currentPollingIntervalMs - remaining) / currentPollingIntervalMs) * 100;
+        const clamped = Math.max(0, Math.min(100, pct));
+
+        if (Math.abs(clamped - pollProgressRef.current) >= 0.5) {
+          pollProgressRef.current = clamped;
+          setPollProgress(clamped);
+        }
+      }
+
+      if (pollingEnabled && !running && !refreshDisabled && Date.now() >= nextPollAtRef.current) {
+        running = true;
+        nextPollAtRef.current = Date.now() + currentPollingIntervalMs;
+        void Promise.resolve(onRefreshRef.current({ silent: true, source: 'poll' })).finally(() => {
+          running = false;
+        });
+      }
+
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [currentPollingIntervalMs, pollingEnabled, refreshDisabled]);
+
   return (
     <main className='h-screen'>
       <section className='grid h-full w-full grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]'>
-        <FlociSidebar activeSlug={activeSlug} onRefresh={onRefresh} refreshDisabled={refreshDisabled} />
+        <FlociSidebar activeSlug={activeSlug} onRefresh={() => void onRefresh({ source: 'manual' })} refreshDisabled={refreshDisabled} />
 
         <section className='flex min-h-0 min-w-0 flex-col overflow-hidden'>
           <ServiceHeader
@@ -57,6 +141,12 @@ export function ServiceShell({
             search={search}
             onSearchChange={onSearchChange}
             searchPlaceholder={searchPlaceholder}
+            pollingEnabled={pollingEnabled}
+            pollProgress={pollProgress}
+            onTogglePolling={togglePolling}
+            pollingDisabled={refreshDisabled}
+            pollingIntervalMs={currentPollingIntervalMs}
+            onPollingIntervalMsChange={updatePollingIntervalMs}
             topActions={headerTopActions}
             bottomContent={headerBottomContent}
           />

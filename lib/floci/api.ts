@@ -33,6 +33,10 @@ function parseJsonBody(body: string): Record<string, unknown> {
   }
 }
 
+function escapeXml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
 function decodeDynamoAttribute(value: Record<string, unknown>): unknown {
   if ('S' in value) return String(value.S || '');
   if ('N' in value) return Number(value.N || 0);
@@ -295,13 +299,33 @@ export function createApiClient(config: ApiConfig) {
   }
 
   async function deleteObject(bucketName: string, key: string): Promise<void> {
-    const response = await fetch(objectUrl(bucketName, key), {
-      method: 'DELETE',
+    const body = `<?xml version="1.0" encoding="UTF-8"?><Delete xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Object><Key>${escapeXml(
+      key
+    )}</Key></Object><Quiet>true</Quiet></Delete>`;
+
+    const response = await fetch(joinUrl(config.baseUrl, `/${bucketName}?delete=`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/xml',
+        Accept: 'application/xml,text/xml,*/*',
+      },
+      body,
     });
 
-    const body = await response.text();
+    const responseBody = await response.text();
     if (!response.ok) {
-      throw new Error(`Delete failed (${response.status}): ${body.slice(0, 180)}`);
+      throw new Error(`Delete failed (${response.status}): ${responseBody.slice(0, 180)}`);
+    }
+
+    if (!responseBody.trim()) {
+      return;
+    }
+
+    const doc = parseXml(responseBody);
+    const error = doc.querySelector('DeleteResult > Error');
+    if (error) {
+      const message = textContent(error, 'Message') || textContent(error, 'Code') || 'Unknown delete error';
+      throw new Error(`Delete failed: ${message}`);
     }
   }
 
@@ -407,6 +431,20 @@ export function createApiClient(config: ApiConfig) {
     const text = await response.text();
     if (!response.ok) {
       throw new Error(`Create bucket failed (${response.status}): ${text.slice(0, 180)}`);
+    }
+  }
+
+  async function deleteS3Bucket(bucketName: string): Promise<void> {
+    const response = await fetch(joinUrl(config.baseUrl, `/${bucketName}`), {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/xml,text/xml,*/*',
+      },
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Delete bucket failed (${response.status}): ${text.slice(0, 180)}`);
     }
   }
 
@@ -822,17 +860,25 @@ export function createApiClient(config: ApiConfig) {
     }));
   }
 
-  async function filterLogEvents(logGroupName: string, filterPattern: string): Promise<CloudWatchLogEvent[]> {
+  async function filterLogEvents(
+    logGroupName: string,
+    filterPattern: string,
+    options?: { startTime?: number; endTime?: number }
+  ): Promise<CloudWatchLogEvent[]> {
     const trimmedPattern = filterPattern.trim();
     const pageLimit = 100;
     const maxPages = 10;
     const collected: Record<string, unknown>[] = [];
     let nextToken = '';
+    const hasStartTime = typeof options?.startTime === 'number' && Number.isFinite(options.startTime);
+    const hasEndTime = typeof options?.endTime === 'number' && Number.isFinite(options.endTime);
 
     for (let page = 0; page < maxPages; page += 1) {
       const response = await awsJsonAction<{ events?: Record<string, unknown>[]; nextToken?: string }>('Logs_20140328.FilterLogEvents', {
         logGroupName,
         ...(trimmedPattern ? { filterPattern: trimmedPattern } : {}),
+        ...(hasStartTime ? { startTime: Math.floor(options?.startTime as number) } : {}),
+        ...(hasEndTime ? { endTime: Math.floor(options?.endTime as number) } : {}),
         limit: pageLimit,
         ...(nextToken ? { nextToken } : {}),
       });
@@ -849,6 +895,8 @@ export function createApiClient(config: ApiConfig) {
         timestamp: Number(item.timestamp || 0),
         message: String(item.message || ''),
         ingestionTime: Number(item.ingestionTime || 0),
+        eventId: String(item.eventId || ''),
+        logStreamName: String(item.logStreamName || ''),
       }))
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 200);
@@ -858,6 +906,10 @@ export function createApiClient(config: ApiConfig) {
 
   async function createLogGroup(logGroupName: string): Promise<void> {
     await awsJsonAction('Logs_20140328.CreateLogGroup', { logGroupName });
+  }
+
+  async function deleteLogGroup(logGroupName: string): Promise<void> {
+    await awsJsonAction('Logs_20140328.DeleteLogGroup', { logGroupName });
   }
 
   async function createLambdaFunction(name: string, role: string, zipBase64: string, runtime = 'nodejs18.x', handler = 'index.handler'): Promise<string> {
@@ -915,6 +967,7 @@ export function createApiClient(config: ApiConfig) {
     deleteMessage,
     loadBuckets,
     createS3Bucket,
+    deleteS3Bucket,
     loadObjectsForBucketPrefix,
     listAllKeysForPrefix,
     loadSnsTopics,
@@ -954,5 +1007,6 @@ export function createApiClient(config: ApiConfig) {
     listLogStreams,
     filterLogEvents,
     createLogGroup,
+    deleteLogGroup,
   };
 }

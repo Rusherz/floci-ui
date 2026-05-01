@@ -9,7 +9,6 @@ export function joinUrl(base: string, path = ''): string {
 export function encodeS3KeyForPath(key: string): string {
   return key
     .split('/')
-    .filter((segment) => segment.length > 0)
     .map((segment) => encodeURIComponent(segment))
     .join('/');
 }
