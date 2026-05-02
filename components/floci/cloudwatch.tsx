@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -20,7 +20,7 @@ export default function CloudWatchPage() {
   const api = useMemo(() => createApiClient(createApiConfig()), []);
 
   const [groups, setGroups] = useState<CloudWatchLogGroupSummary[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState('');
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [streams, setStreams] = useState<CloudWatchLogStreamSummary[]>([]);
   const [events, setEvents] = useState<CloudWatchLogEvent[]>([]);
   const [search, setSearch] = useState('');
@@ -37,6 +37,7 @@ export default function CloudWatchPage() {
   const [clearLogsOpen, setClearLogsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const eventsListRef = useRef<HTMLDivElement | null>(null);
+  const lastGroupAnchorRef = useRef<number | null>(null);
 
   const loadGroups = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -46,7 +47,11 @@ export default function CloudWatchPage() {
     try {
       const next = await api.listLogGroups();
       setGroups(next);
-      setSelectedGroup((current) => (current && next.some((group) => group.logGroupName === current) ? current : next[0]?.logGroupName || ''));
+      setSelectedGroups((current) => {
+        const existing = current.filter((groupName) => next.some((group) => group.logGroupName === groupName));
+        if (existing.length > 0) return existing;
+        return next[0]?.logGroupName ? [next[0].logGroupName] : [];
+      });
       if (!silent) {
         setStatus({ type: 'info', message: `Loaded ${next.length} log group(s).` });
       }
@@ -60,17 +65,25 @@ export default function CloudWatchPage() {
   }, [api]);
 
   const loadStreams = useCallback(async () => {
-    if (!selectedGroup) {
+    if (!selectedGroups.length) {
       setStreams([]);
       return;
     }
     try {
-      const next = await api.listLogStreams(selectedGroup);
-      setStreams(next);
+      const allStreams = await Promise.all(
+        selectedGroups.map(async (groupName) => {
+          const groupStreams = await api.listLogStreams(groupName);
+          return groupStreams.map((stream) => ({
+            ...stream,
+            logStreamName: `${groupName}:${stream.logStreamName}`,
+          }));
+        })
+      );
+      setStreams(allStreams.flat());
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load log streams' });
     }
-  }, [api, selectedGroup]);
+  }, [api, selectedGroups]);
 
   useEffect(() => {
     void loadGroups();
@@ -85,6 +98,45 @@ export default function CloudWatchPage() {
     if (!q) return groups;
     return groups.filter((group) => group.logGroupName.toLowerCase().includes(q));
   }, [groups, search]);
+
+  const handleSelectGroup = useCallback(
+    (index: number, event?: MouseEvent<HTMLButtonElement>) => {
+      const withRange = Boolean(event?.shiftKey);
+      const withToggle = Boolean(event?.metaKey || event?.ctrlKey);
+      if (withRange && event) {
+        event.preventDefault();
+      }
+
+      const group = filtered[index];
+      if (!group) return;
+
+      setSelectedGroups((prev) => {
+        const next = new Set(prev);
+        if (withRange && lastGroupAnchorRef.current !== null) {
+          const start = Math.min(lastGroupAnchorRef.current, index);
+          const end = Math.max(lastGroupAnchorRef.current, index);
+          for (let i = start; i <= end; i += 1) {
+            const candidate = filtered[i];
+            if (!candidate) continue;
+            next.add(candidate.logGroupName);
+          }
+        } else if (withToggle) {
+          if (next.has(group.logGroupName)) {
+            next.delete(group.logGroupName);
+          } else {
+            next.add(group.logGroupName);
+          }
+          lastGroupAnchorRef.current = index;
+        } else {
+          next.clear();
+          next.add(group.logGroupName);
+          lastGroupAnchorRef.current = index;
+        }
+        return Array.from(next);
+      });
+    },
+    [filtered]
+  );
 
   const toEpochMs = useCallback((value: string): number | undefined => {
     if (!value.trim()) return undefined;
@@ -104,8 +156,8 @@ export default function CloudWatchPage() {
   }, [messageFilter, severityFilter]);
 
   const runFilter = useCallback(async (silent = false) => {
-    if (!selectedGroup) {
-      if (!silent) setStatus({ type: 'error', message: 'Select a log group first.' });
+    if (!selectedGroups.length) {
+      if (!silent) setStatus({ type: 'error', message: 'Select at least one log group first.' });
       return;
     }
 
@@ -121,7 +173,17 @@ export default function CloudWatchPage() {
 
     if (!silent) setLoading(true);
     try {
-      const next = await api.filterLogEvents(selectedGroup, compiledFilterPattern, { startTime, endTime });
+      const groupedEvents = await Promise.all(
+        selectedGroups.map(async (groupName) => {
+          const groupEvents = await api.filterLogEvents(groupName, compiledFilterPattern, { startTime, endTime });
+          return groupEvents.map((event) => ({
+            ...event,
+            eventId: event.eventId ? `${groupName}:${event.eventId}` : '',
+            logStreamName: `${groupName}:${event.logStreamName}`,
+          }));
+        })
+      );
+      const next = groupedEvents.flat().sort((a, b) => b.timestamp - a.timestamp).slice(0, 200);
       setEvents(next);
       if (!silent) setStatus({ type: 'info', message: `Loaded ${next.length} event(s).` });
     } catch (error) {
@@ -129,15 +191,15 @@ export default function CloudWatchPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [api, compiledFilterPattern, fromDateTime, selectedGroup, toDateTime, toEpochMs]);
+  }, [api, compiledFilterPattern, fromDateTime, selectedGroups, toDateTime, toEpochMs]);
 
   useEffect(() => {
-    if (!selectedGroup) {
+    if (!selectedGroups.length) {
       setEvents([]);
       return;
     }
     void runFilter(true);
-  }, [runFilter, selectedGroup]);
+  }, [runFilter, selectedGroups]);
 
   const createGroup = useCallback(
     async (nameRaw: string) => {
@@ -148,7 +210,7 @@ export default function CloudWatchPage() {
       try {
         await api.createLogGroup(name);
         await loadGroups();
-        setSelectedGroup(name);
+        setSelectedGroups([name]);
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created log group ${name}.` });
       } catch (error) {
@@ -160,30 +222,34 @@ export default function CloudWatchPage() {
     [api, loadGroups]
   );
 
-  const clearSelectedGroup = useCallback(async () => {
-    const group = selectedGroup.trim();
-    if (!group) {
-      setStatus({ type: 'error', message: 'Select a log group first.' });
+  const clearSelectedGroups = useCallback(async () => {
+    const groupsToClear = selectedGroups.map((group) => group.trim()).filter(Boolean);
+    if (!groupsToClear.length) {
+      setStatus({ type: 'error', message: 'Select at least one log group first.' });
       return;
     }
 
     setLoading(true);
     try {
-      await api.deleteLogGroup(group);
-      await api.createLogGroup(group);
+      await Promise.all(
+        groupsToClear.map(async (group) => {
+          await api.deleteLogGroup(group);
+          await api.createLogGroup(group);
+        })
+      );
       setStreams([]);
       setEvents([]);
       setSelectedEventKey('');
       await loadGroups({ silent: true });
-      setSelectedGroup(group);
-      setStatus({ type: 'info', message: `Cleared logs for ${group}.` });
+      setSelectedGroups(groupsToClear);
+      setStatus({ type: 'info', message: `Cleared logs for ${groupsToClear.length} group(s).` });
     } catch (error) {
-      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to clear log group' });
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to clear selected log groups' });
     } finally {
       setClearLogsOpen(false);
       setLoading(false);
     }
-  }, [api, loadGroups, selectedGroup]);
+  }, [api, loadGroups, selectedGroups]);
 
   const parsedEvents = useMemo(() => {
     const parseRequestFields = (raw: string): Record<string, string> => {
@@ -347,13 +413,13 @@ export default function CloudWatchPage() {
             <p className='text-sm text-muted-foreground'>No log groups found.</p>
           ) : (
             <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
-              {filtered.map((group) => {
-                const active = group.logGroupName === selectedGroup;
+              {filtered.map((group, index) => {
+                const active = selectedGroups.includes(group.logGroupName);
                 return (
                   <button
                     key={group.logGroupName}
                     type='button'
-                    onClick={() => setSelectedGroup(group.logGroupName)}
+                    onClick={(event) => handleSelectGroup(index, event)}
                     className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-accent')}
                   >
                     <div className='truncate font-medium'>{group.logGroupName}</div>
@@ -408,7 +474,7 @@ export default function CloudWatchPage() {
                   <Input type='datetime-local' value={toDateTime} onChange={(event) => setToDateTime(event.target.value)} />
                 </div>
               </div>
-              <Button onClick={() => void runFilter()} disabled={loading || !selectedGroup}>
+              <Button onClick={() => void runFilter()} disabled={loading || !selectedGroups.length}>
                 Run Filter
               </Button>
             </CardContent>
@@ -421,9 +487,11 @@ export default function CloudWatchPage() {
               <div className='flex items-center justify-between gap-2'>
                 <div>
                   <CardTitle className='text-base'>Events</CardTitle>
-                  <p className='text-xs text-muted-foreground'>{streams.length} stream(s) in selected group</p>
+                  <p className='text-xs text-muted-foreground'>
+                    {streams.length} stream(s) across {selectedGroups.length} selected group(s)
+                  </p>
                 </div>
-                <Button variant='destructive' size='sm' onClick={() => setClearLogsOpen(true)} disabled={loading || !selectedGroup}>
+                <Button variant='destructive' size='sm' onClick={() => setClearLogsOpen(true)} disabled={loading || !selectedGroups.length}>
                   Clear Logs
                 </Button>
               </div>
@@ -559,13 +627,13 @@ export default function CloudWatchPage() {
         title='Clear CloudWatch Logs'
         description={
           <>
-            This will delete and recreate <strong>{selectedGroup || 'the selected log group'}</strong>. Existing events will be removed.
+            This will delete and recreate <strong>{selectedGroups.length} selected log group(s)</strong>. Existing events will be removed.
           </>
         }
         onCancel={() => setClearLogsOpen(false)}
-        onConfirm={() => void clearSelectedGroup()}
+        onConfirm={() => void clearSelectedGroups()}
         confirmLabel='Clear Logs'
-        confirmDisabled={loading || !selectedGroup}
+        confirmDisabled={loading || !selectedGroups.length}
         cancelDisabled={loading}
       />
     </ServiceShell>
