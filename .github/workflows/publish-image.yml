@@ -43,7 +43,7 @@ jobs:
           docker rm -f floci-e2e >/dev/null 2>&1 || true
           docker run -d --name floci-e2e -p 4566:4566 hectorvent/floci:latest
           for i in {1..60}; do
-            if curl -sf http://localhost:4566/healthz >/dev/null; then
+            if curl -sf http://localhost:4566/ >/dev/null; then
               echo "Floci is ready"
               exit 0
             fi
