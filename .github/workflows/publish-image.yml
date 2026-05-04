@@ -38,6 +38,21 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install chromium
 
+      - name: Start Floci
+        run: |
+          docker rm -f floci-e2e >/dev/null 2>&1 || true
+          docker run -d --name floci-e2e -p 4566:4566 hectorvent/floci:latest
+          for i in {1..60}; do
+            if curl -sf http://localhost:4566/healthz >/dev/null; then
+              echo "Floci is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Floci did not become ready in time"
+          docker logs floci-e2e || true
+          exit 1
+
       - name: Run lint + Playwright e2e
         env:
           RUN_FLOCI_E2E: '1'
@@ -45,6 +60,12 @@ jobs:
         run: |
           npm run lint
           npm run test:e2e
+
+      - name: Stop Floci
+        if: always()
+        run: |
+          docker logs floci-e2e || true
+          docker rm -f floci-e2e || true
 
       - name: Execute GitVersion (Docker)
         id: gitversion
