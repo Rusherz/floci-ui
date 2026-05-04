@@ -2,16 +2,17 @@ import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { FLOCI_ELEMENTS } from '@/lib/floci/elements';
+import { getEnabledElements } from '@/lib/floci/elements';
 
 type ElementsNavProps = {
   activeSlug?: string;
 };
 
 export function ElementsNav({ activeSlug }: ElementsNavProps) {
+  const elements = getEnabledElements();
   return (
     <nav className='grid gap-2'>
-      {FLOCI_ELEMENTS.map((element) => {
+      {elements.map((element) => {
         const active = activeSlug === element.slug;
 
         return (

@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
+import { getCreateErrorMessage, isValidCloudWatchLogGroupName, logCreateAction } from '@/lib/floci/create-workflows';
 import type { CloudWatchLogEvent, CloudWatchLogGroupSummary, CloudWatchLogStreamSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -205,16 +206,23 @@ export default function CloudWatchPage() {
     async (nameRaw: string) => {
       const name = nameRaw.trim();
       if (!name) return;
+      if (!isValidCloudWatchLogGroupName(name)) {
+        setCreateError('Log group name must be 1-512 chars and use letters, numbers, `.`, `-`, `_`, `/`, or `#`.');
+        return;
+      }
       setCreateError('');
       setCreating(true);
+      logCreateAction('cloudwatch-log-group', 'start', { name });
       try {
         await api.createLogGroup(name);
         await loadGroups();
         setSelectedGroups([name]);
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created log group ${name}.` });
+        logCreateAction('cloudwatch-log-group', 'success', { name });
       } catch (error) {
-        setCreateError(error instanceof Error ? error.message : 'Failed to create log group');
+        logCreateAction('cloudwatch-log-group', 'error', { name, error: error instanceof Error ? error.message : String(error) });
+        setCreateError(getCreateErrorMessage(error, 'Failed to create log group'));
       } finally {
         setCreating(false);
       }

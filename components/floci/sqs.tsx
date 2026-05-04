@@ -1193,7 +1193,7 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
       }}
       searchPlaceholder={state.view === VIEWS.sqs ? 'Search queues...' : 'Search objects or path...'}
       pollingIntervalMs={state.polling.intervalMs}
-      pollingDefaultEnabled={state.view === VIEWS.sqs}
+      pollingDefaultEnabled={false}
       onRefresh={(options) => void handleRefresh(options)}
       refreshDisabled={state.loading}
       status={banner}

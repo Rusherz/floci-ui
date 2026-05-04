@@ -1,6 +1,9 @@
 node_modules/
 .next/
 out/
+*.tsbuildinfo
+playwright-report/
+test-results/
 
 .DS_Store
 
@@ -16,3 +19,6 @@ pnpm-debug.log*
 
 # Local lambda fixtures
 lambdas/
+
+# Local agent workspace
+.claude/

@@ -714,12 +714,21 @@ export function createApiClient(config: ApiConfig) {
     return String(response.EventBusArn || '');
   }
 
-  async function createEventRule(name: string, eventBusName: string, eventPattern: string): Promise<string> {
-    const response = await awsJsonAction<{ RuleArn?: string }>('AWSEvents.PutRule', {
+  async function createEventRule(name: string, eventBusName: string, eventPattern?: string, scheduleExpression?: string): Promise<string> {
+    const payload: Record<string, unknown> = {
       Name: name,
       EventBusName: eventBusName,
-      EventPattern: eventPattern,
       State: 'ENABLED',
+    };
+    if (eventPattern) {
+      payload.EventPattern = eventPattern;
+    }
+    if (scheduleExpression) {
+      payload.ScheduleExpression = scheduleExpression;
+    }
+
+    const response = await awsJsonAction<{ RuleArn?: string }>('AWSEvents.PutRule', {
+      ...payload,
     });
     return String(response.RuleArn || '');
   }
@@ -780,12 +789,19 @@ export function createApiClient(config: ApiConfig) {
     return String(response.Parameter?.Value || '');
   }
 
-  async function putSsmParameter(name: string, value: string, type: 'String' | 'SecureString' = 'String'): Promise<number> {
+  async function putSsmParameter(
+    name: string,
+    value: string,
+    type: 'String' | 'SecureString' = 'String',
+    options?: { description?: string; tier?: 'Standard' | 'Advanced' | 'Intelligent-Tiering' }
+  ): Promise<number> {
     const response = await awsJsonAction<{ Version?: number }>('AmazonSSM.PutParameter', {
       Name: name,
       Value: value,
       Type: type,
       Overwrite: true,
+      ...(options?.description ? { Description: options.description } : {}),
+      ...(options?.tier ? { Tier: options.tier } : {}),
     });
     return Number(response.Version || 0);
   }

@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
 import type { DynamoTableDescription, DynamoTableSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -134,20 +135,23 @@ export default function DynamoDbPage() {
   const createTable = useCallback(
     async (nameRaw: string) => {
       const tableName = nameRaw.trim();
-      if (!tableName || !partitionKey.trim()) {
+      if (!isNonEmpty(tableName) || !isNonEmpty(partitionKey)) {
         setCreateError('Table name and partition key are required.');
         return;
       }
       setCreateError('');
       setCreating(true);
+      logCreateAction('dynamodb-table', 'start', { tableName });
       try {
         await api.createDynamoTable(tableName, partitionKey.trim(), sortKey.trim());
         await loadTables();
         setSelectedTable(tableName);
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created table ${tableName}.` });
+        logCreateAction('dynamodb-table', 'success', { tableName });
       } catch (error) {
-        setCreateError(error instanceof Error ? error.message : 'Failed to create table');
+        logCreateAction('dynamodb-table', 'error', { tableName, error: error instanceof Error ? error.message : String(error) });
+        setCreateError(getCreateErrorMessage(error, 'Failed to create table'));
       } finally {
         setCreating(false);
       }

@@ -33,6 +33,7 @@ npm run dev
 - `PORT` (server env): runtime port for `next start` / Docker (default `4173`)
 - `NEXT_PUBLIC_FLOCI_SQS_ACCOUNT_ID` (client env): SQS account ID fallback (default `000000000000`)
 - `NEXT_PUBLIC_FLOCI_SQS_POLL_MS` (client env): SQS poll interval in ms (default `5000`)
+- `NEXT_PUBLIC_FLOCI_ENABLED_SERVICES` (client env): comma-separated enabled service slugs, or `*` for all. Disabled services are hidden and return `404`.
 
 ## Endpoints
 
@@ -53,11 +54,53 @@ npm run dev
 - `/secrets-manager` Secrets Manager service page
 - `/cloudwatch` CloudWatch Logs service page
 
+## Create Workflows
+
+Create actions are available across S3, SQS, SNS, DynamoDB, Lambda, EventBridge, Step Functions, SSM, Secrets Manager, and CloudWatch Logs.
+
+- Create operations refresh lists after success and attempt to auto-select the new resource.
+- Validation is enforced in UI for common name/format rules, then re-validated by Floci/AWS APIs.
+- Error messages include friendlier mapping for common failures (already exists, invalid input, access denied, throttling).
+
+### Caveats
+
+- Some services intentionally expose a simplified create form first (for example, no full advanced-option coverage).
+- Lambda creation currently expects a ZIP payload upload in the dialog.
+- Manual smoke tests for each create flow are still tracked in [`FLOCI_CREATE_WORKFLOWS_PLAN.md`](./FLOCI_CREATE_WORKFLOWS_PLAN.md).
+
 ## Build
 
 ```bash
 npm run build
 npm run start
+```
+
+## End-to-End Tests (Playwright)
+
+Playwright is configured for create-workflow coverage under `tests/e2e`.
+
+1. Install browser binaries:
+
+```bash
+npx playwright install
+```
+
+2. Ensure Floci is running (default `http://localhost:4566`).
+3. Run the suite:
+
+```bash
+RUN_FLOCI_E2E=1 npm run test:e2e
+```
+
+Notes:
+- Tests are intentionally gated behind `RUN_FLOCI_E2E=1`.
+- The suite starts the Next.js app automatically using Playwright `webServer`.
+- Override base URL if needed with `PLAYWRIGHT_BASE_URL`.
+
+Precheck workflow:
+
+```bash
+npm run precheck
 ```
 
 ## Docker

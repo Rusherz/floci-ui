@@ -1,5 +1,3 @@
-'use client';
-
 import SsmPage from '@/components/floci/ssm';
 
 export default function Page() {

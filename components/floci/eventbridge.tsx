@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
 import type { EventRuleSummary, EventTargetSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,8 @@ export default function EventBridgePage() {
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
   const [rulePattern, setRulePattern] = useState('{\n  "source": ["floci.ui"]\n}');
+  const [ruleMode, setRuleMode] = useState<'pattern' | 'schedule'>('pattern');
+  const [scheduleExpression, setScheduleExpression] = useState('rate(5 minutes)');
 
   const loadBuses = useCallback(async () => {
     setLoading(true);
@@ -112,17 +115,20 @@ export default function EventBridgePage() {
 
   const createBus = useCallback(async (nameRaw: string) => {
     const name = nameRaw.trim();
-    if (!name) return;
+    if (!isNonEmpty(name)) return;
     setCreating(true);
     setCreateError('');
+    logCreateAction('eventbridge-bus', 'start', { name });
     try {
       await api.createEventBus(name);
       setSelectedBus(name);
       await loadBuses();
       setCreateBusOpen(false);
       setStatus({ type: 'info', message: `Created bus ${name}.` });
+      logCreateAction('eventbridge-bus', 'success', { name });
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : 'Failed to create bus');
+      logCreateAction('eventbridge-bus', 'error', { name, error: error instanceof Error ? error.message : String(error) });
+      setCreateError(getCreateErrorMessage(error, 'Failed to create bus'));
     } finally {
       setCreating(false);
     }
@@ -130,27 +136,40 @@ export default function EventBridgePage() {
 
   const createRule = useCallback(async (nameRaw: string) => {
     const name = nameRaw.trim();
-    if (!name || !selectedBus) return;
-    try {
-      JSON.parse(rulePattern);
-    } catch {
-      setCreateError('Event pattern must be valid JSON.');
+    if (!isNonEmpty(name) || !selectedBus) return;
+    if (ruleMode === 'pattern') {
+      try {
+        JSON.parse(rulePattern);
+      } catch {
+        setCreateError('Event pattern must be valid JSON.');
+        return;
+      }
+    } else if (!isNonEmpty(scheduleExpression)) {
+      setCreateError('Schedule expression is required.');
       return;
     }
     setCreating(true);
     setCreateError('');
+    logCreateAction('eventbridge-rule', 'start', { name, bus: selectedBus, mode: ruleMode });
     try {
-      await api.createEventRule(name, selectedBus, rulePattern);
+      await api.createEventRule(
+        name,
+        selectedBus,
+        ruleMode === 'pattern' ? rulePattern : undefined,
+        ruleMode === 'schedule' ? scheduleExpression.trim() : undefined
+      );
       await loadRules();
       setSelectedRule(name);
       setCreateRuleOpen(false);
       setStatus({ type: 'info', message: `Created rule ${name}.` });
+      logCreateAction('eventbridge-rule', 'success', { name, bus: selectedBus, mode: ruleMode });
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : 'Failed to create rule');
+      logCreateAction('eventbridge-rule', 'error', { name, bus: selectedBus, mode: ruleMode, error: error instanceof Error ? error.message : String(error) });
+      setCreateError(getCreateErrorMessage(error, 'Failed to create rule'));
     } finally {
       setCreating(false);
     }
-  }, [api, loadRules, rulePattern, selectedBus]);
+  }, [api, loadRules, ruleMode, rulePattern, scheduleExpression, selectedBus]);
 
   return (
     <ServiceShell
@@ -258,9 +277,29 @@ export default function EventBridgePage() {
         errorMessage={createError}
         onSubmit={createRule}
       >
-        <div className='grid gap-1'>
-          <p className='text-xs text-muted-foreground'>Event Pattern JSON</p>
-          <BoundedTextarea value={rulePattern} onChange={(event) => setRulePattern(event.target.value)} className='font-mono' minHeightClassName='min-h-[100px]' maxHeightClassName='max-h-[24vh]' />
+        <div className='grid gap-2'>
+          <div className='grid gap-1'>
+            <p className='text-xs text-muted-foreground'>Rule Type</p>
+            <div className='flex gap-2'>
+              <Button type='button' size='sm' variant={ruleMode === 'pattern' ? 'default' : 'outline'} onClick={() => setRuleMode('pattern')}>
+                Event Pattern
+              </Button>
+              <Button type='button' size='sm' variant={ruleMode === 'schedule' ? 'default' : 'outline'} onClick={() => setRuleMode('schedule')}>
+                Schedule
+              </Button>
+            </div>
+          </div>
+          {ruleMode === 'pattern' ? (
+            <div className='grid gap-1'>
+              <p className='text-xs text-muted-foreground'>Event Pattern JSON</p>
+              <BoundedTextarea value={rulePattern} onChange={(event) => setRulePattern(event.target.value)} className='font-mono' minHeightClassName='min-h-[100px]' maxHeightClassName='max-h-[24vh]' />
+            </div>
+          ) : (
+            <div className='grid gap-1'>
+              <p className='text-xs text-muted-foreground'>Schedule Expression</p>
+              <Input value={scheduleExpression} onChange={(event) => setScheduleExpression(event.target.value)} placeholder='rate(5 minutes)' />
+            </div>
+          )}
         </div>
       </CreateResourceDialog>
     </ServiceShell>

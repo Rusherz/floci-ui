@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
 import type { SecretDetails, SecretSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -95,20 +96,23 @@ export default function SecretsManagerPage() {
   const createSecret = useCallback(
     async (nameRaw: string) => {
       const name = nameRaw.trim();
-      if (!name || !value.trim()) {
+      if (!isNonEmpty(name) || !isNonEmpty(value)) {
         setCreateError('Secret name and value are required.');
         return;
       }
       setCreateError('');
       setCreating(true);
+      logCreateAction('secret', 'start', { name });
       try {
         const arn = await api.createSecret(name, value, createDescription.trim());
         await loadSecrets();
         setSelectedSecretId(arn || name);
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created secret ${name}.` });
+        logCreateAction('secret', 'success', { name, arn });
       } catch (error) {
-        setCreateError(error instanceof Error ? error.message : 'Failed to create secret');
+        logCreateAction('secret', 'error', { name, error: error instanceof Error ? error.message : String(error) });
+        setCreateError(getCreateErrorMessage(error, 'Failed to create secret'));
       } finally {
         setCreating(false);
       }

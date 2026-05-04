@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
 import type { StepFunctionExecutionSummary, StepFunctionStateMachineSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -104,7 +105,7 @@ export default function StepFunctionsPage() {
   const createStateMachine = useCallback(
     async (nameRaw: string) => {
       const name = nameRaw.trim();
-      if (!name || !roleArn.trim()) {
+      if (!isNonEmpty(name) || !isNonEmpty(roleArn)) {
         setCreateError('Name and role ARN are required.');
         return;
       }
@@ -116,14 +117,17 @@ export default function StepFunctionsPage() {
       }
       setCreateError('');
       setCreating(true);
+      logCreateAction('step-function', 'start', { name, machineType });
       try {
         const arn = await api.createStepFunctionsStateMachine(name, roleArn.trim(), definition, machineType);
         await loadStateMachines();
         setSelectedArn(arn);
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created state machine ${name}.` });
+        logCreateAction('step-function', 'success', { name, arn, machineType });
       } catch (error) {
-        setCreateError(error instanceof Error ? error.message : 'Failed to create state machine');
+        logCreateAction('step-function', 'error', { name, machineType, error: error instanceof Error ? error.message : String(error) });
+        setCreateError(getCreateErrorMessage(error, 'Failed to create state machine'));
       } finally {
         setCreating(false);
       }

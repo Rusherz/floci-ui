@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
 import type { SsmParameterSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +22,9 @@ export default function SsmPage() {
   const [selectedValue, setSelectedValue] = useState('');
   const [newName, setNewName] = useState('/app/example');
   const [newValue, setNewValue] = useState('{\n  "enabled": true\n}');
+  const [newType, setNewType] = useState<'String' | 'SecureString'>('String');
+  const [newDescription, setNewDescription] = useState('');
+  const [newTier, setNewTier] = useState<'Standard' | 'Advanced' | 'Intelligent-Tiering'>('Standard');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
@@ -66,23 +70,29 @@ export default function SsmPage() {
   }, [parameters, search]);
 
   const saveParameter = useCallback(async () => {
-    if (!newName.trim()) {
+    if (!isNonEmpty(newName)) {
       setStatus({ type: 'error', message: 'Parameter name is required.' });
       return;
     }
 
     setLoading(true);
+    logCreateAction('ssm-parameter', 'start', { name: newName.trim(), type: newType, tier: newTier });
     try {
-      const version = await api.putSsmParameter(newName.trim(), newValue);
+      const version = await api.putSsmParameter(newName.trim(), newValue, newType, {
+        description: newDescription.trim(),
+        tier: newTier,
+      });
       setStatus({ type: 'info', message: `Saved ${newName.trim()} (v${version}).` });
       await loadParameters();
       setSelectedName(newName.trim());
+      logCreateAction('ssm-parameter', 'success', { name: newName.trim(), version });
     } catch (error) {
-      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to save parameter' });
+      logCreateAction('ssm-parameter', 'error', { name: newName.trim(), error: error instanceof Error ? error.message : String(error) });
+      setStatus({ type: 'error', message: getCreateErrorMessage(error, 'Failed to save parameter') });
     } finally {
       setLoading(false);
     }
-  }, [api, loadParameters, newName, newValue]);
+  }, [api, loadParameters, newDescription, newName, newTier, newType, newValue]);
 
   return (
     <ServiceShell
@@ -140,6 +150,28 @@ export default function SsmPage() {
           </CardHeader>
           <CardContent className='grid gap-3'>
             <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder='Parameter name (e.g. /app/config)' />
+            <Input value={newDescription} onChange={(event) => setNewDescription(event.target.value)} placeholder='Description (optional)' />
+            <div className='grid gap-2 sm:grid-cols-2'>
+              <div className='flex gap-2'>
+                <Button type='button' variant={newType === 'String' ? 'default' : 'outline'} size='sm' onClick={() => setNewType('String')}>
+                  String
+                </Button>
+                <Button type='button' variant={newType === 'SecureString' ? 'default' : 'outline'} size='sm' onClick={() => setNewType('SecureString')}>
+                  SecureString
+                </Button>
+              </div>
+              <div className='flex gap-2'>
+                <Button type='button' variant={newTier === 'Standard' ? 'default' : 'outline'} size='sm' onClick={() => setNewTier('Standard')}>
+                  Standard
+                </Button>
+                <Button type='button' variant={newTier === 'Advanced' ? 'default' : 'outline'} size='sm' onClick={() => setNewTier('Advanced')}>
+                  Advanced
+                </Button>
+                <Button type='button' variant={newTier === 'Intelligent-Tiering' ? 'default' : 'outline'} size='sm' onClick={() => setNewTier('Intelligent-Tiering')}>
+                  Intelligent
+                </Button>
+              </div>
+            </div>
             <BoundedTextarea value={newValue} onChange={(event) => setNewValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[130px]' maxHeightClassName='max-h-[32vh]' />
             <Button onClick={() => void saveParameter()} disabled={loading || !newName.trim()}>
               Save Parameter

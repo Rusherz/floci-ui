@@ -1,5 +1,3 @@
-'use client';
-
 import SecretsManagerPage from '@/components/floci/secrets-manager';
 
 export default function Page() {

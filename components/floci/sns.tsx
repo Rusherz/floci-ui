@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
+import { getCreateErrorMessage, isValidTopicName, logCreateAction } from '@/lib/floci/create-workflows';
 import type { SnsSubscription, SnsTopic } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -107,20 +108,23 @@ export default function SnsPage() {
   const createTopic = useCallback(
     async (nameRaw: string) => {
       const name = nameRaw.trim();
-      if (!/^[A-Za-z0-9_-]{1,256}(\.fifo)?$/.test(name)) {
+      if (!isValidTopicName(name)) {
         setCreateError('Topic name must be 1-256 chars and use letters, numbers, underscore, hyphen, optional .fifo.');
         return;
       }
       setCreateError('');
       setCreating(true);
+      logCreateAction('sns-topic', 'start', { name });
       try {
         const arn = await api.createSnsTopic(name);
         await loadTopics();
         setSelectedTopicArn(arn);
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created topic ${name}.` });
+        logCreateAction('sns-topic', 'success', { name, arn });
       } catch (error) {
-        setCreateError(error instanceof Error ? error.message : 'Failed to create topic');
+        logCreateAction('sns-topic', 'error', { name, error: error instanceof Error ? error.message : String(error) });
+        setCreateError(getCreateErrorMessage(error, 'Failed to create topic'));
       } finally {
         setCreating(false);
       }
