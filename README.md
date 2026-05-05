@@ -111,6 +111,15 @@ Build:
 docker build -t floci-ui:local .
 ```
 
+Build multi-arch (push to registry):
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/rusherz/floci-ui:latest \
+  --push .
+```
+
 Run:
 
 ```bash
