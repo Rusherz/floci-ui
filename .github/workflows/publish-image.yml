@@ -14,11 +14,12 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
-  publish:
-    runs-on: self-hosted
-
+  checks:
+    name: Checks
+    runs-on: [self-hosted, linux]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,19 +54,39 @@ jobs:
           docker logs floci-e2e || true
           exit 1
 
-      - name: Run lint + Playwright e2e
+      - name: Run lint
         env:
           RUN_FLOCI_E2E: '1'
           NEXT_PUBLIC_FLOCI_ENABLED_SERVICES: '*'
-        run: |
-          npm run lint
-          npm run test:e2e
+        run: npm run lint
+
+      - name: Run Playwright e2e
+        env:
+          RUN_FLOCI_E2E: '1'
+          NEXT_PUBLIC_FLOCI_ENABLED_SERVICES: '*'
+        run: npm run test:e2e
 
       - name: Stop Floci
         if: always()
         run: |
           docker logs floci-e2e || true
           docker rm -f floci-e2e || true
+
+  resolve_image_version:
+    name: Resolve image version
+    runs-on: [self-hosted, linux]
+    needs: [checks]
+    outputs:
+      image: ${{ steps.image_refs.outputs.image }}
+      version_tag: ${{ steps.image_refs.outputs.version_tag }}
+      version_image: ${{ steps.image_refs.outputs.version_image }}
+      latest_image: ${{ steps.image_refs.outputs.latest_image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Execute GitVersion (Docker)
         id: gitversion
@@ -86,10 +107,41 @@ jobs:
         shell: bash
         run: |
           SEMVER='${{ steps.gitversion.outputs.fullSemVer }}'
-          # Docker tags do not allow '+'
           SEMVER_SAFE="${SEMVER//+/.}"
           echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
           echo "semver_safe=$SEMVER_SAFE" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Docker image refs
+        id: image_refs
+        shell: bash
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ steps.image.outputs.repo }}"
+          VERSION_TAG='${{ steps.version.outputs.semver_safe }}'
+          VERSION_IMAGE="$IMAGE:$VERSION_TAG"
+          LATEST_IMAGE="$IMAGE:latest"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
+          echo "version_image=$VERSION_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "latest_image=$LATEST_IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Publish resolved image refs
+        shell: bash
+        run: |
+          {
+            echo "## Resolved image refs"
+            echo "- Image: \`${{ steps.image_refs.outputs.image }}\`"
+            echo "- Version tag: \`${{ steps.image_refs.outputs.version_tag }}\`"
+            echo "- Version image: \`${{ steps.image_refs.outputs.version_image }}\`"
+            echo "- Latest image: \`${{ steps.image_refs.outputs.latest_image }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build_and_push_version_image:
+    name: Build and push version image
+    runs-on: [self-hosted, linux]
+    needs: [resolve_image_version]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -104,19 +156,59 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push semver image
+      - name: Build and push version image (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ env.REGISTRY }}/${{ steps.image.outputs.repo }}:${{ steps.version.outputs.semver_safe }}
+          platforms: ${{ env.PLATFORMS }}
+          tags: ${{ needs.resolve_image_version.outputs.version_image }}
 
-      - name: Tag and push latest (default branch only)
-        if: github.ref == 'refs/heads/main'
+      - name: Verify version image manifest
+        shell: bash
+        run: docker buildx imagetools inspect "${{ needs.resolve_image_version.outputs.version_image }}"
+
+  promote_latest:
+    name: Promote latest
+    runs-on: [self-hosted, linux]
+    needs: [resolve_image_version, build_and_push_version_image]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Promote version image to latest
+        shell: bash
+        run: docker buildx imagetools create -t "${{ needs.resolve_image_version.outputs.latest_image }}" "${{ needs.resolve_image_version.outputs.version_image }}"
+
+      - name: Verify latest image manifest
+        shell: bash
+        run: docker buildx imagetools inspect "${{ needs.resolve_image_version.outputs.latest_image }}"
+
+  publish_summary:
+    name: Publish summary
+    runs-on: [self-hosted, linux]
+    needs: [resolve_image_version, build_and_push_version_image, promote_latest]
+    if: always() && needs.resolve_image_version.result == 'success' && needs.build_and_push_version_image.result == 'success'
+    steps:
+      - name: Publish image summary
         shell: bash
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ steps.image.outputs.repo }}"
-          VERSION_TAG='${{ steps.version.outputs.semver_safe }}'
-          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:$VERSION_TAG"
+          {
+            echo "## Published Docker image"
+            echo "- Version image: \`${{ needs.resolve_image_version.outputs.version_image }}\`"
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              echo "- Latest image: \`${{ needs.resolve_image_version.outputs.latest_image }}\`"
+            else
+              echo "- Latest image: not promoted (ref: \`${{ github.ref }}\`)"
+            fi
+            echo "- Platforms: \`${{ env.PLATFORMS }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
