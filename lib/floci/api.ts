@@ -924,6 +924,14 @@ export function createApiClient(config: ApiConfig) {
     await awsJsonAction('Logs_20140328.CreateLogGroup', { logGroupName });
   }
 
+  async function putLogGroupRetentionPolicy(logGroupName: string, retentionInDays: number): Promise<void> {
+    await awsJsonAction('Logs_20140328.PutRetentionPolicy', { logGroupName, retentionInDays });
+  }
+
+  async function deleteLogGroupRetentionPolicy(logGroupName: string): Promise<void> {
+    await awsJsonAction('Logs_20140328.DeleteRetentionPolicy', { logGroupName });
+  }
+
   async function deleteLogGroup(logGroupName: string): Promise<void> {
     await awsJsonAction('Logs_20140328.DeleteLogGroup', { logGroupName });
   }
@@ -1023,6 +1031,8 @@ export function createApiClient(config: ApiConfig) {
     listLogStreams,
     filterLogEvents,
     createLogGroup,
+    putLogGroupRetentionPolicy,
+    deleteLogGroupRetentionPolicy,
     deleteLogGroup,
   };
 }

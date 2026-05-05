@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { Pencil, Plus } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -35,6 +36,9 @@ export default function CloudWatchPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editRetentionOpen, setEditRetentionOpen] = useState(false);
+  const [editRetentionError, setEditRetentionError] = useState('');
+  const [updatingRetention, setUpdatingRetention] = useState(false);
   const [clearLogsOpen, setClearLogsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const eventsListRef = useRef<HTMLDivElement | null>(null);
@@ -259,6 +263,51 @@ export default function CloudWatchPage() {
     }
   }, [api, loadGroups, selectedGroups]);
 
+  const updateRetention = useCallback(
+    async (retentionRaw: string) => {
+      const groupsToUpdate = selectedGroups.map((group) => group.trim()).filter(Boolean);
+      if (!groupsToUpdate.length) {
+        setEditRetentionError('Select at least one log group first.');
+        return;
+      }
+
+      const trimmed = retentionRaw.trim();
+      const allowedRetention = new Set([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]);
+
+      if (trimmed) {
+        const retention = Number(trimmed);
+        if (!Number.isInteger(retention) || !allowedRetention.has(retention)) {
+          setEditRetentionError('Use a valid AWS retention value (for example: 7, 14, 30, 90, 365). Leave blank for no retention.');
+          return;
+        }
+      }
+
+      setEditRetentionError('');
+      setUpdatingRetention(true);
+      try {
+        await Promise.all(
+          groupsToUpdate.map((group) => {
+            if (!trimmed) return api.deleteLogGroupRetentionPolicy(group);
+            return api.putLogGroupRetentionPolicy(group, Number(trimmed));
+          })
+        );
+        await loadGroups({ silent: true });
+        setEditRetentionOpen(false);
+        setStatus({
+          type: 'info',
+          message: trimmed
+            ? `Updated retention to ${trimmed} day(s) for ${groupsToUpdate.length} group(s).`
+            : `Removed retention policy for ${groupsToUpdate.length} group(s).`,
+        });
+      } catch (error) {
+        setEditRetentionError(error instanceof Error ? error.message : 'Failed to update retention policy');
+      } finally {
+        setUpdatingRetention(false);
+      }
+    },
+    [api, loadGroups, selectedGroups]
+  );
+
   const parsedEvents = useMemo(() => {
     const parseRequestFields = (raw: string): Record<string, string> => {
       const trimmed = raw.trim();
@@ -411,9 +460,21 @@ export default function CloudWatchPage() {
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Log Groups ({filtered.length})</CardTitle>
-            <Button size='sm' onClick={() => setCreateOpen(true)}>
-              Create Log Group
-            </Button>
+            <div className='flex items-center gap-2'>
+              <Button
+                variant='outline'
+                size='icon'
+                onClick={() => setEditRetentionOpen(true)}
+                disabled={!selectedGroups.length || loading}
+                aria-label='Edit retention'
+                title='Edit retention'
+              >
+                <Pencil />
+              </Button>
+              <Button size='icon' onClick={() => setCreateOpen(true)} aria-label='Create log group' title='Create log group'>
+                <Plus />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
@@ -628,6 +689,21 @@ export default function CloudWatchPage() {
         submitting={creating}
         errorMessage={createError}
         onSubmit={createGroup}
+      />
+      <CreateResourceDialog
+        open={editRetentionOpen}
+        onOpenChange={(open) => {
+          setEditRetentionOpen(open);
+          if (!open) setEditRetentionError('');
+        }}
+        title='Update Log Retention'
+        description={`Set retention for ${selectedGroups.length} selected log group(s). Leave blank to keep logs indefinitely.`}
+        label='Retention Days'
+        placeholder='e.g. 30 (leave blank for no retention)'
+        confirmLabel='Update Retention'
+        submitting={updatingRetention}
+        errorMessage={editRetentionError}
+        onSubmit={updateRetention}
       />
       <ConfirmDialog
         open={clearLogsOpen}

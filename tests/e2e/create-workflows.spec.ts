@@ -349,14 +349,27 @@ test.describe('Create workflows', () => {
     await expect(page.getByText(/Stored new secret version/i)).toBeVisible();
   });
 
-  test('CloudWatch create group + run filter', async ({ page }) => {
+  test('CloudWatch create group + edit retention + run filter', async ({ page }) => {
     const created = createTracker();
     createdByTestId.set(test.info().testId, created);
     const group = `/aws/pw/${uniqueName('logs')}`;
     created.logGroups.push(group);
     await page.goto('/cloudwatch');
-    await createFromDialog(page, 'Create Log Group', group, 'Create Log Group', '/aws/lambda/my-function');
+    await createFromDialog(page, 'Create log group', group, 'Create Log Group', '/aws/lambda/my-function');
     await expectListContainsName(page, group);
+
+    await page.getByRole('button', { name: 'Edit retention' }).click();
+    const retentionInput = page.getByPlaceholder('e.g. 30 (leave blank for no retention)');
+    await expect(retentionInput).toBeVisible();
+    await retentionInput.fill('7');
+    await page.getByRole('button', { name: 'Update Retention' }).click();
+    await expect(page.getByRole('button', { name: new RegExp(`${group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*7 day retention`) }).first()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Edit retention' }).click();
+    await expect(retentionInput).toBeVisible();
+    await retentionInput.fill('');
+    await page.getByRole('button', { name: 'Update Retention' }).click();
+    await expect(page.getByRole('button', { name: new RegExp(`${group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*No retention`) }).first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Expand' }).click();
     await page.getByRole('button', { name: 'Run Filter' }).click();
