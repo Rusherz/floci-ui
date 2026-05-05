@@ -17,6 +17,7 @@ type CreateResourceDialogProps = {
   initialValue?: string;
   errorMessage?: string;
   submitDisabled?: boolean;
+  allowEmptySubmit?: boolean;
   children?: ReactNode;
   onOpenChange: (open: boolean) => void;
   onSubmit: (value: string) => Promise<void> | void;
@@ -33,6 +34,7 @@ export function CreateResourceDialog({
   initialValue = '',
   errorMessage,
   submitDisabled = false,
+  allowEmptySubmit = false,
   children,
   onOpenChange,
   onSubmit,
@@ -64,7 +66,7 @@ export function CreateResourceDialog({
           <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={() => void onSubmit(value)} disabled={submitting || !value.trim() || submitDisabled}>
+          <Button onClick={() => void onSubmit(value)} disabled={submitting || (!allowEmptySubmit && !value.trim()) || submitDisabled}>
             {submitting ? 'Creating...' : confirmLabel}
           </Button>
         </DialogFooter>

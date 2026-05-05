@@ -703,6 +703,7 @@ export default function CloudWatchPage() {
         confirmLabel='Update Retention'
         submitting={updatingRetention}
         errorMessage={editRetentionError}
+        allowEmptySubmit
         onSubmit={updateRetention}
       />
       <ConfirmDialog
