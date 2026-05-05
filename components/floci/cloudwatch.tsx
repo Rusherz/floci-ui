@@ -467,18 +467,15 @@ export default function CloudWatchPage() {
                 onClick={() => setEditRetentionOpen(true)}
                 disabled={!selectedGroups.length || loading}
                 aria-label='Edit retention'
-                title='Edit retention policy for selected log groups.'
+                title='Edit retention'
               >
                 <Pencil />
               </Button>
-              <Button size='icon' onClick={() => setCreateOpen(true)} aria-label='Create log group' title='Create a new CloudWatch log group.'>
+              <Button size='icon' onClick={() => setCreateOpen(true)} aria-label='Create log group' title='Create log group'>
                 <Plus />
               </Button>
             </div>
           </div>
-          <p className='text-xs text-muted-foreground'>
-            Usage notes: select one or more groups, tune filters, then run filter to load recent events. Use retention settings to control log lifespan.
-          </p>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
           {!filtered.length ? (
@@ -546,12 +543,9 @@ export default function CloudWatchPage() {
                   <Input type='datetime-local' value={toDateTime} onChange={(event) => setToDateTime(event.target.value)} />
                 </div>
               </div>
-              <Button title='Apply the current severity/message/date filters to selected groups.' onClick={() => void runFilter()} disabled={loading || !selectedGroups.length}>
+              <Button onClick={() => void runFilter()} disabled={loading || !selectedGroups.length}>
                 Run Filter
               </Button>
-              <p className='text-xs text-muted-foreground'>
-                Tip: leave message empty and pick severity/time range first, then narrow by message text.
-              </p>
             </CardContent>
           ) : null}
         </Card>
@@ -566,7 +560,7 @@ export default function CloudWatchPage() {
                     {streams.length} stream(s) across {selectedGroups.length} selected group(s)
                   </p>
                 </div>
-                <Button title='Delete and recreate selected groups to clear all events.' variant='destructive' size='sm' onClick={() => setClearLogsOpen(true)} disabled={loading || !selectedGroups.length}>
+                <Button variant='destructive' size='sm' onClick={() => setClearLogsOpen(true)} disabled={loading || !selectedGroups.length}>
                   Clear Logs
                 </Button>
               </div>

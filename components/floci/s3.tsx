@@ -1207,7 +1207,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                   <CardTitle className='text-base'>Queues ({filteredQueues.length})</CardTitle>
                   <Button
                     size='sm'
-                    title='Create a new queue. Use .fifo suffix for FIFO queues.'
                     onClick={() => {
                       setCreateError('');
                       setSqsAdvancedOpen(false);
@@ -1217,9 +1216,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                     Create Queue
                   </Button>
                 </div>
-                <p className='text-xs text-muted-foreground'>
-                  Usage notes: search to narrow queues, select one queue to inspect messages, then delete selected messages from Message Detail.
-                </p>
               </CardHeader>
               <CardContent className='xl:min-h-0 xl:flex-1'>
                 {!filteredQueues.length ? (
@@ -1291,7 +1287,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                       variant='destructive'
                       size='sm'
                       aria-label='Delete selected message'
-                      title='Delete the selected message(s) from this queue.'
                       onClick={() => void handleDeleteMessage()}
                       disabled={!selectedQueue || (!selectedMessage?.raw?.receiptHandle && !selectedMessageKeys.size)}
                     >
@@ -1330,7 +1325,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                   <CardTitle className='text-base'>Buckets ({state.s3.buckets.length})</CardTitle>
                   <Button
                     size='sm'
-                    title='Create a new S3 bucket. Bucket names must be globally valid lowercase names.'
                     onClick={() => {
                       setCreateError('');
                       setS3AdvancedOpen(false);
@@ -1340,9 +1334,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                     Create Bucket
                   </Button>
                 </div>
-                <p className='text-xs text-muted-foreground'>
-                  Usage notes: pick a bucket, use path search like <code>folder/sub/</code> for prefix matching, and use Up/breadcrumbs to navigate.
-                </p>
               </CardHeader>
               <CardContent className='xl:min-h-0 xl:flex-1'>
                 {!state.s3.buckets.length ? (
@@ -1369,7 +1360,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                               variant={active ? 'secondary' : 'destructive'}
                               size='sm'
                               aria-label={`Delete bucket ${bucket.name}`}
-                              title={`Delete bucket ${bucket.name}. Bucket must be empty first.`}
                               onClick={() => void handleDeleteBucket(bucket.name)}
                             >
                               <Trash2 className='size-4' />
@@ -1391,7 +1381,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                     <Button
                       variant='outline'
                       size='sm'
-                      title='Go to the parent prefix.'
                       disabled={!selectedPrefix}
                       onClick={() => void navigateToPrefix(parentPrefix(selectedPrefix))}
                     >
@@ -1438,7 +1427,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                             variant='destructive'
                             size='sm'
                             aria-label={`Delete folder ${folder.name}`}
-                            title={`Delete folder ${folder.name} and nested objects.`}
                             onClick={(event) => {
                               event.stopPropagation();
                               void handleDeleteFolder(folder.prefix);
@@ -1479,7 +1467,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                                   size='sm'
                                   className='gap-1'
                                   aria-label={`Open object ${file.name}`}
-                                  title='Open object URL in a new tab.'
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     if (!selectedBucket) return;
@@ -1492,7 +1479,6 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                                   variant='destructive'
                                   size='sm'
                                   aria-label={`Delete object ${file.name}`}
-                                  title={`Delete object ${file.name}.`}
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     void handleDeleteFile(file.key);
