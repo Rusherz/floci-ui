@@ -18,7 +18,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   checks:
@@ -139,10 +138,12 @@ jobs:
             echo "- Latest image: \`${{ steps.image_refs.outputs.latest_image }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  build_and_push_version_image:
-    name: Build and push version image
+  build_and_push_amd64_image:
+    name: Build and push amd64 image
     runs-on: [self-hosted, linux]
     needs: [resolve_image_version]
+    outputs:
+      arch_image: ${{ steps.arch_ref.outputs.arch_image }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -160,14 +161,87 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push version image (multi-arch)
+      - name: Resolve amd64 image ref
+        id: arch_ref
+        shell: bash
+        run: echo "arch_image=${{ needs.resolve_image_version.outputs.version_image }}-amd64" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push amd64 image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: ${{ env.PLATFORMS }}
-          tags: ${{ needs.resolve_image_version.outputs.version_image }}
+          platforms: linux/amd64
+          tags: ${{ steps.arch_ref.outputs.arch_image }}
+
+      - name: Verify amd64 image manifest
+        shell: bash
+        run: docker buildx imagetools inspect "${{ steps.arch_ref.outputs.arch_image }}"
+
+  build_and_push_arm64_image:
+    name: Build and push arm64 image
+    runs-on: [self-hosted, linux]
+    needs: [resolve_image_version]
+    outputs:
+      arch_image: ${{ steps.arch_ref.outputs.arch_image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve arm64 image ref
+        id: arch_ref
+        shell: bash
+        run: echo "arch_image=${{ needs.resolve_image_version.outputs.version_image }}-arm64" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push arm64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/arm64
+          tags: ${{ steps.arch_ref.outputs.arch_image }}
+
+      - name: Verify arm64 image manifest
+        shell: bash
+        run: docker buildx imagetools inspect "${{ steps.arch_ref.outputs.arch_image }}"
+
+  publish_version_manifest:
+    name: Publish version manifest
+    runs-on: [self-hosted, linux]
+    needs: [resolve_image_version, build_and_push_amd64_image, build_and_push_arm64_image]
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create version multi-arch manifest
+        shell: bash
+        run: |
+          docker buildx imagetools create \
+            -t "${{ needs.resolve_image_version.outputs.version_image }}" \
+            "${{ needs.build_and_push_amd64_image.outputs.arch_image }}" \
+            "${{ needs.build_and_push_arm64_image.outputs.arch_image }}"
 
       - name: Verify version image manifest
         shell: bash
@@ -176,7 +250,7 @@ jobs:
   promote_latest:
     name: Promote latest
     runs-on: [self-hosted, linux]
-    needs: [resolve_image_version, build_and_push_version_image]
+    needs: [resolve_image_version, publish_version_manifest]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Log in to GHCR
@@ -200,8 +274,8 @@ jobs:
   publish_summary:
     name: Publish summary
     runs-on: [self-hosted, linux]
-    needs: [resolve_image_version, build_and_push_version_image, promote_latest]
-    if: always() && needs.resolve_image_version.result == 'success' && needs.build_and_push_version_image.result == 'success'
+    needs: [resolve_image_version, build_and_push_amd64_image, build_and_push_arm64_image, publish_version_manifest, promote_latest]
+    if: always() && needs.resolve_image_version.result == 'success' && needs.publish_version_manifest.result == 'success'
     steps:
       - name: Publish image summary
         shell: bash
@@ -209,10 +283,13 @@ jobs:
           {
             echo "## Published Docker image"
             echo "- Version image: \`${{ needs.resolve_image_version.outputs.version_image }}\`"
+            echo "- Arch images:"
+            echo "  - \`${{ needs.build_and_push_amd64_image.outputs.arch_image }}\`"
+            echo "  - \`${{ needs.build_and_push_arm64_image.outputs.arch_image }}\`"
             if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
               echo "- Latest image: \`${{ needs.resolve_image_version.outputs.latest_image }}\`"
             else
               echo "- Latest image: not promoted (ref: \`${{ github.ref }}\`)"
             fi
-            echo "- Platforms: \`${{ env.PLATFORMS }}\`"
+            echo "- Platforms: \`linux/amd64, linux/arm64\`"
           } >> "$GITHUB_STEP_SUMMARY"
