@@ -154,9 +154,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -173,6 +170,17 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ steps.arch_ref.outputs.arch_image }}
+          cache-from: type=local,src=/tmp/.buildx-cache-amd64
+          cache-to: type=local,dest=/tmp/.buildx-cache-amd64-new,mode=max
+
+      - name: Persist amd64 local buildx cache
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/.buildx-cache-amd64
+          if [ -d /tmp/.buildx-cache-amd64-new ]; then
+            mv /tmp/.buildx-cache-amd64-new /tmp/.buildx-cache-amd64
+          fi
 
       - name: Verify amd64 image manifest
         shell: bash
@@ -214,6 +222,17 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: ${{ steps.arch_ref.outputs.arch_image }}
+          cache-from: type=local,src=/tmp/.buildx-cache-arm64
+          cache-to: type=local,dest=/tmp/.buildx-cache-arm64-new,mode=max
+
+      - name: Persist arm64 local buildx cache
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/.buildx-cache-arm64
+          if [ -d /tmp/.buildx-cache-arm64-new ]; then
+            mv /tmp/.buildx-cache-arm64-new /tmp/.buildx-cache-arm64
+          fi
 
       - name: Verify arm64 image manifest
         shell: bash
