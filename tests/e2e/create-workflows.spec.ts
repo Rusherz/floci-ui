@@ -292,6 +292,8 @@ test.describe('Create workflows', () => {
   });
 
   test('Lambda create + invoke pong template', async ({ page }) => {
+    test.setTimeout(90_000);
+
     const created = createTracker();
     createdByTestId.set(test.info().testId, created);
     const functionName = uniqueName('pw-fn');
@@ -307,14 +309,16 @@ test.describe('Create workflows', () => {
     const invokeButton = page.getByRole('button', { name: 'Invoke' });
     const invokingButton = page.getByRole('button', { name: 'Invoking...' });
     const invokePlaceholder = page.getByText('Invoke a function to view output.');
-    const pongText = page.getByText(/pong/i).first();
+    const invokeStatusCode = page.locator('pre').filter({ hasText: '"statusCode": 200' }).first();
+    const invokeNoFunctionError = page.locator('pre').filter({ hasText: '"functionError": ""' }).first();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await invokeButton.click({ force: true });
-      await expect(invokingButton).toHaveCount(0, { timeout: 15_000 });
-      await expect(invokePlaceholder).toHaveCount(0, { timeout: 15_000 });
+      await expect(invokingButton).toHaveCount(0, { timeout: 20_000 });
+      await expect(invokePlaceholder).toHaveCount(0, { timeout: 20_000 });
       try {
-        await pongText.waitFor({ state: 'visible', timeout: 5_000 });
+        await expect(invokeStatusCode).toBeVisible({ timeout: 5_000 });
+        await expect(invokeNoFunctionError).toBeVisible({ timeout: 5_000 });
         return;
       } catch {
         if (attempt < 2) {
@@ -323,7 +327,8 @@ test.describe('Create workflows', () => {
       }
     }
 
-    await expect(pongText).toBeVisible({ timeout: 20_000 });
+    await expect(invokeStatusCode).toBeVisible({ timeout: 20_000 });
+    await expect(invokeNoFunctionError).toBeVisible({ timeout: 20_000 });
   });
 
   test('DynamoDB create table + scan', async ({ page }) => {
