@@ -838,13 +838,13 @@ export default function CloudWatchPage() {
         title='Clear CloudWatch Logs'
         description={
           <>
-            This will delete and recreate <strong>{selectedGroups.length} selected log group(s)</strong>. Existing events will be removed.
+            This will delete and recreate <strong>{effectiveGroupNames.length} {selectedGroups.length ? 'selected' : 'available'} log group(s)</strong>. Existing events will be removed.
           </>
         }
         onCancel={() => setClearLogsOpen(false)}
         onConfirm={() => void clearSelectedGroups()}
         confirmLabel='Clear Logs'
-        confirmDisabled={loading || !selectedGroups.length}
+        confirmDisabled={loading || !effectiveGroupNames.length}
         cancelDisabled={loading}
       />
       <ConfirmDialog
