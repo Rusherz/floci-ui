@@ -33,7 +33,7 @@ npm run dev
 - `PORT` (server env): runtime port for `next start` / Docker (default `4173`)
 - `NEXT_PUBLIC_FLOCI_SQS_ACCOUNT_ID` (client env): SQS account ID fallback (default `000000000000`)
 - `NEXT_PUBLIC_FLOCI_SQS_POLL_MS` (client env): SQS poll interval in ms (default `5000`)
-- `NEXT_PUBLIC_FLOCI_ENABLED_SERVICES` (client env): comma-separated enabled service slugs, or `*` for all. Disabled services are hidden and return `404`.
+- `FLOCI_ENABLED_SERVICES` (server env): comma-separated enabled service slugs, or `*` for all. Disabled services are hidden and return `404`.
 
 ## Endpoints
 
@@ -128,5 +128,8 @@ docker buildx build \
 Run:
 
 ```bash
-docker run --rm -p 4173:4173 -e FLOCI_ORIGIN=http://host.docker.internal:4566 floci-ui:local
+docker run --rm -p 4173:4173 \
+  -e FLOCI_ORIGIN=http://host.docker.internal:4566 \
+  -e FLOCI_ENABLED_SERVICES=sqs,s3,cloudwatch \
+  floci-ui:local
 ```

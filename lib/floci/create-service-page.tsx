@@ -1,7 +1,13 @@
 import type { ComponentType } from 'react';
+import { getEnabledElements, type FlociElement } from '@/lib/floci/elements';
 
-export function createServicePage(Component: ComponentType) {
+type ServicePageProps = {
+  enabledElements: FlociElement[];
+};
+
+export function createServicePage(Component: ComponentType<ServicePageProps>) {
   return function ServicePage() {
-    return <Component />;
+    const enabledElements = getEnabledElements();
+    return <Component enabledElements={enabledElements} />;
   };
 }

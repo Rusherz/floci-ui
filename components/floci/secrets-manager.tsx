@@ -16,9 +16,10 @@ import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { SecretDetails, SecretSummary } from '@/lib/floci/types';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
-export default function SecretsManagerPage() {
+export default function SecretsManagerPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
 
   const [secrets, setSecrets] = useState<SecretSummary[]>([]);
@@ -132,6 +133,7 @@ export default function SecretsManagerPage() {
 
   return (
     <ServiceShell
+      enabledElements={enabledElements}
       activeSlug='secrets-manager'
       title='Secrets Manager'
       description='Secret listing, version metadata, and value updates.'

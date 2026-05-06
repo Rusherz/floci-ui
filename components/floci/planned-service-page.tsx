@@ -5,20 +5,22 @@ import { ServiceHeader } from '@/components/floci/service-header';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
 type PlannedServicePageProps = {
+  enabledElements: FlociElement[];
   slug: string;
   title: string;
   description: string;
   checklist: string[];
 };
 
-export function PlannedServicePage({ slug, title, description, checklist }: PlannedServicePageProps) {
+export function PlannedServicePage({ enabledElements, slug, title, description, checklist }: PlannedServicePageProps) {
   return (
     <main className='h-screen'>
       <section className='grid h-full w-full grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]'>
-        <FlociSidebar activeSlug={slug} />
+        <FlociSidebar enabledElements={enabledElements} activeSlug={slug} />
 
         <section className='flex min-h-0 flex-col overflow-hidden'>
           <ServiceHeader

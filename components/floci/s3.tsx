@@ -17,6 +17,7 @@ import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import { createInitialState, STORAGE_KEYS, type AppState, type FileEntry, VIEWS } from '@/lib/floci/types';
 import { applyLoadedUiState, loadUiState, locationKey, parentPrefix, persistUiState } from '@/lib/floci/utils';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
 type Banner = ServiceStatus;
@@ -41,7 +42,7 @@ function clampIndex(index: number, maxLength: number): number {
   return Math.max(0, Math.min(index, maxLength - 1));
 }
 
-export function S3OpsPage() {
+export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const apiConfig = useMemo(() => createApiConfig(), []);
   const api = useMemo(() => createApiClient(apiConfig), [apiConfig]);
 
@@ -856,6 +857,7 @@ export function S3OpsPage() {
 
   return (
     <ServiceShell
+      enabledElements={enabledElements}
       activeSlug={VIEWS.s3}
       title='S3'
       description='Bucket navigation, object actions, and path-aware search.'

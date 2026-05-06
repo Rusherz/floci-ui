@@ -17,6 +17,7 @@ import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import { createInitialState, STORAGE_KEYS, type AppState, type Queue, VIEWS } from '@/lib/floci/types';
 import { applyLoadedUiState, joinUrl, loadUiState, persistUiState } from '@/lib/floci/utils';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
 type Banner = ServiceStatus;
@@ -32,7 +33,7 @@ function clampIndex(index: number, maxLength: number): number {
   return Math.max(0, Math.min(index, maxLength - 1));
 }
 
-export function SqsOpsPage() {
+export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const apiConfig = useMemo(() => createApiConfig(), []);
   const api = useMemo(() => createApiClient(apiConfig), [apiConfig]);
 
@@ -466,6 +467,7 @@ export function SqsOpsPage() {
 
   return (
     <ServiceShell
+      enabledElements={enabledElements}
       activeSlug={VIEWS.sqs}
       title='SQS'
       description='Queue operations, message inspection, and timed polling.'

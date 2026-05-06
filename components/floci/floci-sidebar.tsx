@@ -6,16 +6,18 @@ import { RefreshCcw } from 'lucide-react';
 import { ElementsNav } from '@/components/floci/elements-nav';
 import { ThemeToggleButton } from '@/components/floci/theme-toggle-button';
 import { Button, buttonVariants } from '@/components/ui/button';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
 type FlociSidebarProps = {
+  enabledElements: FlociElement[];
   activeSlug?: string;
   subtitle?: string;
   onRefresh?: () => void;
   refreshDisabled?: boolean;
 };
 
-export function FlociSidebar({ activeSlug, subtitle = 'AWS-style local service console', onRefresh, refreshDisabled = false }: FlociSidebarProps) {
+export function FlociSidebar({ enabledElements, activeSlug, subtitle = 'AWS-style local service console', onRefresh, refreshDisabled = false }: FlociSidebarProps) {
   return (
     <aside className='border-b bg-card p-4 lg:h-screen lg:border-b-0 lg:border-r'>
       <div className='flex h-full flex-col gap-5'>
@@ -25,7 +27,7 @@ export function FlociSidebar({ activeSlug, subtitle = 'AWS-style local service c
           <p className='text-sm text-muted-foreground'>{subtitle}</p>
         </div>
 
-        <ElementsNav activeSlug={activeSlug} />
+        <ElementsNav activeSlug={activeSlug} elements={enabledElements} />
 
         <div className='mt-auto space-y-2'>
           <Link href='/' className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-start gap-2')}>

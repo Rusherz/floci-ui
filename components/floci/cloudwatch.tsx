@@ -17,9 +17,10 @@ import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isValidCloudWatchLogGroupName, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { CloudWatchLogEvent, CloudWatchLogGroupSummary, CloudWatchLogStreamSummary } from '@/lib/floci/types';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
-export default function CloudWatchPage() {
+export default function CloudWatchPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
 
   const [groups, setGroups] = useState<CloudWatchLogGroupSummary[]>([]);
@@ -560,6 +561,7 @@ export default function CloudWatchPage() {
 
   return (
     <ServiceShell
+      enabledElements={enabledElements}
       activeSlug='cloudwatch'
       title='CloudWatch Logs'
       description='Log groups, streams, and filtered event viewing.'

@@ -6,12 +6,12 @@ import { Info } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { getElementBySlug } from '@/lib/floci/elements';
+import { getElementBySlug, type FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
-import { getEnabledElements } from '@/lib/floci/elements';
 
 type ElementsNavProps = {
   activeSlug?: string;
+  elements: FlociElement[];
 };
 
 type HelpItem = string | { text: string; children: string[] };
@@ -54,8 +54,7 @@ function getServiceHelp(slug: string): HelpItem[] {
   );
 }
 
-export function ElementsNav({ activeSlug }: ElementsNavProps) {
-  const elements = getEnabledElements();
+export function ElementsNav({ activeSlug, elements }: ElementsNavProps) {
   const [helpSlug, setHelpSlug] = useState<string | null>(null);
   const helpElement = useMemo(() => (helpSlug ? getElementBySlug(helpSlug) : undefined), [helpSlug]);
   const helpItems = useMemo(() => (helpSlug ? getServiceHelp(helpSlug) : []), [helpSlug]);

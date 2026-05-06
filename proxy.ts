@@ -12,7 +12,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const enabled = parseEnabledServicesFromEnv(process.env.NEXT_PUBLIC_FLOCI_ENABLED_SERVICES);
+  const enabled = parseEnabledServicesFromEnv(process.env.FLOCI_ENABLED_SERVICES ?? process.env.NEXT_PUBLIC_FLOCI_ENABLED_SERVICES);
   if (enabled.has(slug)) {
     return NextResponse.next();
   }

@@ -13,7 +13,7 @@ export default function NotFound() {
   return (
     <main className='h-screen'>
       <section className='grid h-full w-full grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]'>
-        <FlociSidebar />
+        <FlociSidebar enabledElements={enabledElements} />
 
         <section className='flex min-h-0 flex-col overflow-hidden'>
           <section className='grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 md:p-6'>

@@ -76,6 +76,10 @@ export function getElementBySlug(slug: string): FlociElement | undefined {
 
 export const ALL_SERVICE_SLUGS = new Set(FLOCI_ELEMENTS.map((element) => element.slug));
 
+function getEnabledServicesEnvRaw(): string | undefined {
+  return process.env.FLOCI_ENABLED_SERVICES ?? process.env.NEXT_PUBLIC_FLOCI_ENABLED_SERVICES;
+}
+
 export function parseEnabledServicesFromEnv(raw: string | undefined): Set<string> {
   const normalized = (raw || '').trim();
   if (!normalized || normalized === '*') {
@@ -92,7 +96,7 @@ export function parseEnabledServicesFromEnv(raw: string | undefined): Set<string
 }
 
 export function getEnabledServiceSlugs(): Set<string> {
-  return parseEnabledServicesFromEnv(process.env.NEXT_PUBLIC_FLOCI_ENABLED_SERVICES);
+  return parseEnabledServicesFromEnv(getEnabledServicesEnvRaw());
 }
 
 export function isServiceEnabled(slug: string): boolean {

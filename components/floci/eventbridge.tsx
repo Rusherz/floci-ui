@@ -15,9 +15,10 @@ import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { EventRuleSummary, EventTargetSummary } from '@/lib/floci/types';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
-export default function EventBridgePage() {
+export default function EventBridgePage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
 
   const [selectedBus, setSelectedBus] = useState('default');
@@ -197,6 +198,7 @@ export default function EventBridgePage() {
 
   return (
     <ServiceShell
+      enabledElements={enabledElements}
       activeSlug='eventbridge'
       title='EventBridge'
       description='Event bus, rule, target visibility, and test event publishing.'

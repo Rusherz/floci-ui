@@ -15,6 +15,7 @@ import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
 import type { SsmParameterSummary } from '@/lib/floci/types';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
 const DEFAULT_CREATE_NAME = '/app/example';
@@ -71,7 +72,7 @@ function SsmParameterOptionsFields({
   );
 }
 
-export default function SsmPage() {
+export default function SsmPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
 
   const [parameters, setParameters] = useState<SsmParameterSummary[]>([]);
@@ -219,6 +220,7 @@ export default function SsmPage() {
 
   return (
     <ServiceShell
+      enabledElements={enabledElements}
       activeSlug='ssm'
       title='SSM Parameter Store'
       description='Parameter list, value inspection, and write/update actions.'

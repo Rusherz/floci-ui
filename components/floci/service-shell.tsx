@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { FlociSidebar } from '@/components/floci/floci-sidebar';
 import { ServiceHeader } from '@/components/floci/service-header';
 import { ServiceStatusBanner } from '@/components/floci/service-status-banner';
+import type { FlociElement } from '@/lib/floci/elements';
 import type { ServiceStatus } from '@/lib/floci/service-ui';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +15,7 @@ type RefreshOptions = {
 };
 
 type ServiceShellProps = {
+  enabledElements: FlociElement[];
   activeSlug: string;
   title: string;
   description: string;
@@ -33,6 +35,7 @@ type ServiceShellProps = {
 };
 
 export function ServiceShell({
+  enabledElements,
   activeSlug,
   title,
   description,
@@ -128,7 +131,7 @@ export function ServiceShell({
   return (
     <main className='h-screen'>
       <section className='grid h-full w-full grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]'>
-        <FlociSidebar activeSlug={activeSlug} onRefresh={() => void onRefresh({ source: 'manual' })} refreshDisabled={refreshDisabled} />
+        <FlociSidebar enabledElements={enabledElements} activeSlug={activeSlug} onRefresh={() => void onRefresh({ source: 'manual' })} refreshDisabled={refreshDisabled} />
 
         <section className='flex min-h-0 min-w-0 flex-col overflow-hidden'>
           <ServiceHeader

@@ -18,6 +18,7 @@ import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { asyncActionError, asyncActionIdle, asyncActionLoading, asyncActionSuccess, createAsyncActionState, getCreateErrorMessage, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { LambdaFunctionSummary } from '@/lib/floci/types';
+import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
 type EditorEntry = {
@@ -148,7 +149,7 @@ function highlightCode(code: string, path: string): string {
   return out.join('');
 }
 
-export default function LambdaPage() {
+export default function LambdaPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
 
   const [functions, setFunctions] = useState<LambdaFunctionSummary[]>([]);
@@ -470,6 +471,7 @@ export default function LambdaPage() {
 
   return (
     <ServiceShell
+      enabledElements={enabledElements}
       activeSlug='lambda'
       title='Lambda'
       description='Function list, invoke, and code editor workflows.'
