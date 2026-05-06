@@ -399,9 +399,11 @@ test.describe('Create workflows', () => {
     await page.getByRole('button', { name: 'Create Parameter' }).last().click();
     await expectListContainsName(page, name);
 
-    const valuePanel = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Parameter Value' }) }).first();
-    await valuePanel.locator('textarea').first().fill('{"enabled": false}');
-    await page.getByRole('button', { name: 'Save Parameter' }).click();
+    await page.getByRole('button', { name: `Edit parameter ${name}` }).click();
+    const updateDialog = page.getByRole('dialog');
+    await expect(updateDialog.getByText('Update SSM Parameter')).toBeVisible();
+    await updateDialog.locator('textarea').first().fill('{"enabled": false}');
+    await updateDialog.getByRole('button', { name: 'Update Parameter' }).click();
     await expectListContainsName(page, name);
   });
 

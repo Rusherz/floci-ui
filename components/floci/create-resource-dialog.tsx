@@ -13,8 +13,10 @@ type CreateResourceDialogProps = {
   label: string;
   placeholder: string;
   confirmLabel: string;
+  submittingLabel?: string;
   submitting?: boolean;
   initialValue?: string;
+  inputDisabled?: boolean;
   errorMessage?: string;
   submitDisabled?: boolean;
   allowEmptySubmit?: boolean;
@@ -30,8 +32,10 @@ export function CreateResourceDialog({
   label,
   placeholder,
   confirmLabel,
+  submittingLabel = 'Creating...',
   submitting = false,
   initialValue = '',
+  inputDisabled = false,
   errorMessage,
   submitDisabled = false,
   allowEmptySubmit = false,
@@ -57,7 +61,7 @@ export function CreateResourceDialog({
 
         <div className='grid gap-2'>
           <label className='text-sm font-medium'>{label}</label>
-          <Input value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} autoFocus />
+          <Input value={value} onChange={(event) => setValue(event.target.value)} placeholder={placeholder} autoFocus disabled={inputDisabled} />
           {errorMessage ? <p className='text-xs text-destructive'>{errorMessage}</p> : null}
         </div>
         {children ? <div className='mt-3'>{children}</div> : null}
@@ -67,7 +71,7 @@ export function CreateResourceDialog({
             Cancel
           </Button>
           <Button onClick={() => void onSubmit(value)} disabled={submitting || (!allowEmptySubmit && !value.trim()) || submitDisabled}>
-            {submitting ? 'Creating...' : confirmLabel}
+            {submitting ? submittingLabel : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
