@@ -29,6 +29,11 @@ const SERVICE_HELP: Record<string, string[]> = {
     'Select one or more log groups from the list.',
     'Use Shift+Click for range select and Ctrl/Cmd+Click to toggle additional groups.',
     'Set severity, message, and time filters, then run filter to load recent events.',
+    'Message filter examples from our log shape:',
+    'severity_text: "ERROR"',
+    'body: "request failed"',
+    'attributes.service: "api-gateway"',
+    'attributes.request contains method:"POST" path:"/v1/workflows"',
   ],
 };
 
