@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+import type { ServiceStatusType } from '@/lib/floci/service-ui';
 import { cn } from '@/lib/utils';
 
 type ServiceStatusBannerProps = {
-  type: 'info' | 'error' | null;
+  type: ServiceStatusType;
   message: string;
   infoDismissMs?: number;
 };

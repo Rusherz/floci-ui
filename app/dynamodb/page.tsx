@@ -1,5 +1,4 @@
 import DynamoDbPage from '@/components/floci/dynamodb';
+import { createServicePage } from '@/lib/floci/create-service-page';
 
-export default function Page() {
-  return <DynamoDbPage />;
-}
+export default createServicePage(DynamoDbPage);

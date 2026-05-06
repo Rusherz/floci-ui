@@ -11,21 +11,22 @@ import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { createApiClient } from '@/lib/floci/api';
-import { createApiConfig } from '@/lib/floci/config';
+import { filterBySearch } from '@/lib/floci/search';
+import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
+import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { StepFunctionExecutionSummary, StepFunctionStateMachineSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
 export default function StepFunctionsPage() {
-  const api = useMemo(() => createApiClient(createApiConfig()), []);
+  const api = useFlociApi();
 
   const [stateMachines, setStateMachines] = useState<StepFunctionStateMachineSummary[]>([]);
   const [selectedArn, setSelectedArn] = useState('');
   const [executions, setExecutions] = useState<StepFunctionExecutionSummary[]>([]);
   const [search, setSearch] = useState('');
   const [executionInput, setExecutionInput] = useState('{\n  "trigger": "manual"\n}');
-  const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [status, setStatus] = useState<ServiceStatus>(EMPTY_SERVICE_STATUS);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -72,11 +73,7 @@ export default function StepFunctionsPage() {
     void loadExecutions();
   }, [loadExecutions]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return stateMachines;
-    return stateMachines.filter((sm) => sm.name.toLowerCase().includes(q));
-  }, [search, stateMachines]);
+  const filtered = useMemo(() => filterBySearch(stateMachines, search, (machine) => machine.name), [search, stateMachines]);
 
   const refreshStateMachinesOptimistically = useOptimisticCreateRefresh<StepFunctionStateMachineSummary>({
     upsert: (machine) => {

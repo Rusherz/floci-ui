@@ -240,6 +240,26 @@ test.describe('Create workflows', () => {
     createdByTestId.delete(testInfo.testId);
   });
 
+  test('Service routes render expected headers', async ({ page }) => {
+    const routes: Array<{ path: string; heading: string }> = [
+      { path: '/s3', heading: 'S3' },
+      { path: '/sqs', heading: 'SQS' },
+      { path: '/sns', heading: 'SNS' },
+      { path: '/dynamodb', heading: 'DynamoDB' },
+      { path: '/lambda', heading: 'Lambda' },
+      { path: '/eventbridge', heading: 'EventBridge' },
+      { path: '/step-functions', heading: 'Step Functions' },
+      { path: '/ssm', heading: 'SSM Parameter Store' },
+      { path: '/secrets-manager', heading: 'Secrets Manager' },
+      { path: '/cloudwatch', heading: 'CloudWatch Logs' },
+    ];
+
+    for (const route of routes) {
+      await page.goto(route.path);
+      await expect(page.getByRole('heading', { name: route.heading })).toBeVisible();
+    }
+  });
+
   test('S3 create bucket', async ({ page }) => {
     const created = createTracker();
     createdByTestId.set(test.info().testId, created);

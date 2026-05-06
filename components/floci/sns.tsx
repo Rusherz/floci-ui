@@ -10,14 +10,15 @@ import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { createApiClient } from '@/lib/floci/api';
-import { createApiConfig } from '@/lib/floci/config';
+import { filterBySearch } from '@/lib/floci/search';
+import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
+import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isValidTopicName, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { SnsSubscription, SnsTopic } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
 export default function SnsPage() {
-  const api = useMemo(() => createApiClient(createApiConfig()), []);
+  const api = useFlociApi();
 
   const [topics, setTopics] = useState<SnsTopic[]>([]);
   const [selectedTopicArn, setSelectedTopicArn] = useState('');
@@ -25,7 +26,7 @@ export default function SnsPage() {
   const [search, setSearch] = useState('');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
-  const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [status, setStatus] = useState<ServiceStatus>(EMPTY_SERVICE_STATUS);
   const [loading, setLoading] = useState(false);
   const [subscriptionsLoading, setSubscriptionsLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -81,11 +82,7 @@ export default function SnsPage() {
     void loadSubscriptions(selectedTopicArn);
   }, [loadSubscriptions, selectedTopicArn]);
 
-  const filteredTopics = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return topics;
-    return topics.filter((topic) => topic.name.toLowerCase().includes(query));
-  }, [search, topics]);
+  const filteredTopics = useMemo(() => filterBySearch(topics, search, (topic) => topic.name), [search, topics]);
 
   const refreshTopicsOptimistically = useOptimisticCreateRefresh<SnsTopic>({
     upsert: (topic) => {

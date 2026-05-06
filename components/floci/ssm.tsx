@@ -10,8 +10,9 @@ import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { createApiClient } from '@/lib/floci/api';
-import { createApiConfig } from '@/lib/floci/config';
+import { filterBySearch } from '@/lib/floci/search';
+import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
+import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
 import type { SsmParameterSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
@@ -71,7 +72,7 @@ function SsmParameterOptionsFields({
 }
 
 export default function SsmPage() {
-  const api = useMemo(() => createApiClient(createApiConfig()), []);
+  const api = useFlociApi();
 
   const [parameters, setParameters] = useState<SsmParameterSummary[]>([]);
   const [selectedName, setSelectedName] = useState('');
@@ -92,7 +93,7 @@ export default function SsmPage() {
   const [editValue, setEditValue] = useState('');
 
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [status, setStatus] = useState<ServiceStatus>(EMPTY_SERVICE_STATUS);
   const [loading, setLoading] = useState(false);
 
   const selectedParameter = useMemo(() => parameters.find((parameter) => parameter.name === selectedName) || null, [parameters, selectedName]);
@@ -131,11 +132,7 @@ export default function SsmPage() {
     })();
   }, [api, selectedName]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return parameters;
-    return parameters.filter((p) => p.name.toLowerCase().includes(q));
-  }, [parameters, search]);
+  const filtered = useMemo(() => filterBySearch(parameters, search, (parameter) => parameter.name), [parameters, search]);
 
   const createParameter = useCallback(async (nameRaw: string) => {
     const name = nameRaw.trim();

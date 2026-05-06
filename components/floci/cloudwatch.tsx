@@ -12,14 +12,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createApiClient } from '@/lib/floci/api';
-import { createApiConfig } from '@/lib/floci/config';
+import { filterBySearch } from '@/lib/floci/search';
+import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
+import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isValidCloudWatchLogGroupName, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { CloudWatchLogEvent, CloudWatchLogGroupSummary, CloudWatchLogStreamSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
 export default function CloudWatchPage() {
-  const api = useMemo(() => createApiClient(createApiConfig()), []);
+  const api = useFlociApi();
 
   const [groups, setGroups] = useState<CloudWatchLogGroupSummary[]>([]);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -31,7 +32,7 @@ export default function CloudWatchPage() {
   const [fromDateTime, setFromDateTime] = useState('');
   const [toDateTime, setToDateTime] = useState('');
   const [selectedEventKey, setSelectedEventKey] = useState('');
-  const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [status, setStatus] = useState<ServiceStatus>(EMPTY_SERVICE_STATUS);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -127,11 +128,7 @@ export default function CloudWatchPage() {
     void loadStreams();
   }, [loadStreams]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return groups;
-    return groups.filter((group) => group.logGroupName.toLowerCase().includes(q));
-  }, [groups, search]);
+  const filtered = useMemo(() => filterBySearch(groups, search, (group) => group.logGroupName), [groups, search]);
 
   const refreshGroupsOptimistically = useOptimisticCreateRefresh<CloudWatchLogGroupSummary>({
     upsert: (group) => {

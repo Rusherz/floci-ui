@@ -1,5 +1,4 @@
 import EventBridgePage from '@/components/floci/eventbridge';
+import { createServicePage } from '@/lib/floci/create-service-page';
 
-export default function Page() {
-  return <EventBridgePage />;
-}
+export default createServicePage(EventBridgePage);

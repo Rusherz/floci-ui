@@ -1,5 +1,4 @@
 import SsmPage from '@/components/floci/ssm';
+import { createServicePage } from '@/lib/floci/create-service-page';
 
-export default function Page() {
-  return <SsmPage />;
-}
+export default createServicePage(SsmPage);

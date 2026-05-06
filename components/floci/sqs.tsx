@@ -11,16 +11,15 @@ import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { filterBySearch } from '@/lib/floci/search';
+import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import { createInitialState, STORAGE_KEYS, type AppState, type Queue, VIEWS } from '@/lib/floci/types';
 import { applyLoadedUiState, joinUrl, loadUiState, persistUiState } from '@/lib/floci/utils';
 import { cn } from '@/lib/utils';
 
-type Banner = {
-  type: 'info' | 'error' | null;
-  message: string;
-};
+type Banner = ServiceStatus;
 
 type ConfirmState = {
   open: boolean;
@@ -45,7 +44,7 @@ export function SqsOpsPage() {
   const stateRef = useRef<AppState>(state);
 
   const [bootstrapped, setBootstrapped] = useState(false);
-  const [banner, setBanner] = useState<Banner>({ type: null, message: '' });
+  const [banner, setBanner] = useState<Banner>(EMPTY_SERVICE_STATUS);
   const [confirmState, setConfirmState] = useState<ConfirmState>({
     open: false,
     title: 'Confirm',
@@ -86,9 +85,7 @@ export function SqsOpsPage() {
   }, []);
 
   const getFilteredQueues = useCallback((snapshot: AppState): Queue[] => {
-    const query = snapshot.search.trim().toLowerCase();
-    if (!query) return snapshot.sqs.queues;
-    return snapshot.sqs.queues.filter((queue) => queue.name.toLowerCase().includes(query));
+    return filterBySearch(snapshot.sqs.queues, snapshot.search, (queue) => queue.name);
   }, []);
 
   const extractQueueUrl = useCallback(

@@ -12,16 +12,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import { createInitialState, STORAGE_KEYS, type AppState, type FileEntry, VIEWS } from '@/lib/floci/types';
 import { applyLoadedUiState, loadUiState, locationKey, parentPrefix, persistUiState } from '@/lib/floci/utils';
 import { cn } from '@/lib/utils';
 
-type Banner = {
-  type: 'info' | 'error' | null;
-  message: string;
-};
+type Banner = ServiceStatus;
 
 type ConfirmState = {
   open: boolean;
@@ -55,7 +53,7 @@ export function S3OpsPage() {
   const stateRef = useRef<AppState>(state);
 
   const [bootstrapped, setBootstrapped] = useState(false);
-  const [banner, setBanner] = useState<Banner>({ type: null, message: '' });
+  const [banner, setBanner] = useState<Banner>(EMPTY_SERVICE_STATUS);
   const [confirmState, setConfirmState] = useState<ConfirmState>({
     open: false,
     title: 'Confirm',

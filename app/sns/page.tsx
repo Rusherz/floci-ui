@@ -1,5 +1,4 @@
 import SnsPage from '@/components/floci/sns';
+import { createServicePage } from '@/lib/floci/create-service-page';
 
-export default function Page() {
-  return <SnsPage />;
-}
+export default createServicePage(SnsPage);

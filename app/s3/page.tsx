@@ -1,5 +1,4 @@
 import { S3OpsPage } from '@/components/floci/s3';
+import { createServicePage } from '@/lib/floci/create-service-page';
 
-export default function S3Page() {
-  return <S3OpsPage />;
-}
+export default createServicePage(S3OpsPage);

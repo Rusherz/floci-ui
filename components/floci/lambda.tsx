@@ -13,8 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { createApiClient } from '@/lib/floci/api';
-import { createApiConfig } from '@/lib/floci/config';
+import { filterBySearch } from '@/lib/floci/search';
+import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
+import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { asyncActionError, asyncActionIdle, asyncActionLoading, asyncActionSuccess, createAsyncActionState, getCreateErrorMessage, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { LambdaFunctionSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
@@ -148,7 +149,7 @@ function highlightCode(code: string, path: string): string {
 }
 
 export default function LambdaPage() {
-  const api = useMemo(() => createApiClient(createApiConfig()), []);
+  const api = useFlociApi();
 
   const [functions, setFunctions] = useState<LambdaFunctionSummary[]>([]);
   const [selectedFunctionName, setSelectedFunctionName] = useState('');
@@ -156,7 +157,7 @@ export default function LambdaPage() {
   const [payload, setPayload] = useState('{\n  "ping": true\n}');
   const [invokeOutput, setInvokeOutput] = useState<unknown>(null);
   const [invokeLogs, setInvokeLogs] = useState('');
-  const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [status, setStatus] = useState<ServiceStatus>(EMPTY_SERVICE_STATUS);
   const [loading, setLoading] = useState(false);
   const [invoking, setInvoking] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -201,11 +202,7 @@ export default function LambdaPage() {
     void loadFunctions();
   }, [loadFunctions]);
 
-  const filteredFunctions = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return functions;
-    return functions.filter((fn) => fn.name.toLowerCase().includes(query));
-  }, [functions, search]);
+  const filteredFunctions = useMemo(() => filterBySearch(functions, search, (fn) => fn.name), [functions, search]);
 
   const refreshFunctionsOptimistically = useOptimisticCreateRefresh<LambdaFunctionSummary>({
     upsert: (fn) => {

@@ -5,12 +5,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { FlociSidebar } from '@/components/floci/floci-sidebar';
 import { ServiceHeader } from '@/components/floci/service-header';
 import { ServiceStatusBanner } from '@/components/floci/service-status-banner';
+import type { ServiceStatus } from '@/lib/floci/service-ui';
 import { cn } from '@/lib/utils';
-
-type Status = {
-  type: 'info' | 'error' | null;
-  message: string;
-};
 
 type RefreshOptions = {
   silent?: boolean;
@@ -30,7 +26,7 @@ type ServiceShellProps = {
   refreshDisabled?: boolean;
   pollingIntervalMs?: number;
   pollingDefaultEnabled?: boolean;
-  status: Status;
+  status: ServiceStatus;
   statusSlotContent?: ReactNode;
   children: ReactNode;
   contentClassName?: string;
