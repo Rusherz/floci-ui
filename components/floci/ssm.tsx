@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
+import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
@@ -14,20 +16,29 @@ import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/
 import type { SsmParameterSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
+const DEFAULT_CREATE_NAME = '/app/example';
+const DEFAULT_CREATE_VALUE = '{\n  "enabled": true\n}';
+
 export default function SsmPage() {
   const api = useMemo(() => createApiClient(createApiConfig()), []);
 
   const [parameters, setParameters] = useState<SsmParameterSummary[]>([]);
   const [selectedName, setSelectedName] = useState('');
   const [selectedValue, setSelectedValue] = useState('');
-  const [newName, setNewName] = useState('/app/example');
-  const [newValue, setNewValue] = useState('{\n  "enabled": true\n}');
-  const [newType, setNewType] = useState<'String' | 'SecureString'>('String');
-  const [newDescription, setNewDescription] = useState('');
-  const [newTier, setNewTier] = useState<'Standard' | 'Advanced' | 'Intelligent-Tiering'>('Standard');
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createType, setCreateType] = useState<'String' | 'SecureString'>('String');
+  const [createDescription, setCreateDescription] = useState('');
+  const [createTier, setCreateTier] = useState<'Standard' | 'Advanced' | 'Intelligent-Tiering'>('Standard');
+  const [createValue, setCreateValue] = useState(DEFAULT_CREATE_VALUE);
+
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
+
+  const selectedParameter = useMemo(() => parameters.find((parameter) => parameter.name === selectedName) || null, [parameters, selectedName]);
 
   const loadParameters = useCallback(async () => {
     setLoading(true);
@@ -69,30 +80,65 @@ export default function SsmPage() {
     return parameters.filter((p) => p.name.toLowerCase().includes(q));
   }, [parameters, search]);
 
-  const saveParameter = useCallback(async () => {
-    if (!isNonEmpty(newName)) {
-      setStatus({ type: 'error', message: 'Parameter name is required.' });
+  const createParameter = useCallback(async (nameRaw: string) => {
+    const name = nameRaw.trim();
+    if (!isNonEmpty(name)) {
+      setCreateError('Parameter name is required.');
       return;
     }
 
-    setLoading(true);
-    logCreateAction('ssm-parameter', 'start', { name: newName.trim(), type: newType, tier: newTier });
+    setCreating(true);
+    setCreateError('');
+    logCreateAction('ssm-parameter', 'start', { name, type: createType, tier: createTier });
     try {
-      const version = await api.putSsmParameter(newName.trim(), newValue, newType, {
-        description: newDescription.trim(),
-        tier: newTier,
+      const version = await api.putSsmParameter(name, createValue, createType, {
+        description: createDescription.trim(),
+        tier: createTier,
       });
-      setStatus({ type: 'info', message: `Saved ${newName.trim()} (v${version}).` });
       await loadParameters();
-      setSelectedName(newName.trim());
-      logCreateAction('ssm-parameter', 'success', { name: newName.trim(), version });
+      setSelectedName(name);
+      setCreateOpen(false);
+      setStatus({ type: 'info', message: `Created ${name} (v${version}).` });
+      logCreateAction('ssm-parameter', 'success', { name, version });
     } catch (error) {
-      logCreateAction('ssm-parameter', 'error', { name: newName.trim(), error: error instanceof Error ? error.message : String(error) });
-      setStatus({ type: 'error', message: getCreateErrorMessage(error, 'Failed to save parameter') });
+      logCreateAction('ssm-parameter', 'error', { name, error: error instanceof Error ? error.message : String(error) });
+      setCreateError(getCreateErrorMessage(error, 'Failed to create parameter'));
+    } finally {
+      setCreating(false);
+    }
+  }, [api, createDescription, createTier, createType, createValue, loadParameters]);
+
+  const updateSelectedParameter = useCallback(async () => {
+    if (!selectedName) {
+      setStatus({ type: 'error', message: 'Select a parameter first.' });
+      return;
+    }
+
+    const selectedType = selectedParameter?.type === 'SecureString' ? 'SecureString' : 'String';
+
+    setLoading(true);
+    logCreateAction('ssm-parameter', 'start', { name: selectedName, mode: 'update', type: selectedType });
+    try {
+      const version = await api.putSsmParameter(selectedName, selectedValue, selectedType);
+      setStatus({ type: 'info', message: `Updated ${selectedName} (v${version}).` });
+      logCreateAction('ssm-parameter', 'success', { name: selectedName, version, mode: 'update' });
+      await loadParameters();
+    } catch (error) {
+      logCreateAction('ssm-parameter', 'error', { name: selectedName, mode: 'update', error: error instanceof Error ? error.message : String(error) });
+      setStatus({ type: 'error', message: getCreateErrorMessage(error, 'Failed to update parameter') });
     } finally {
       setLoading(false);
     }
-  }, [api, loadParameters, newDescription, newName, newTier, newType, newValue]);
+  }, [api, loadParameters, selectedName, selectedParameter?.type, selectedValue]);
+
+  const openCreateDialog = useCallback(() => {
+    setCreateType('String');
+    setCreateDescription('');
+    setCreateTier('Standard');
+    setCreateValue(DEFAULT_CREATE_VALUE);
+    setCreateError('');
+    setCreateOpen(true);
+  }, []);
 
   return (
     <ServiceShell
@@ -108,7 +154,18 @@ export default function SsmPage() {
     >
       <Card className='min-h-0 min-w-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
         <CardHeader>
-          <CardTitle className='text-base'>Parameters ({filtered.length})</CardTitle>
+          <div className='flex items-center justify-between gap-2'>
+            <CardTitle className='text-base'>Parameters ({filtered.length})</CardTitle>
+            <Button
+              size='icon'
+              className='size-9'
+              onClick={openCreateDialog}
+              aria-label='Create parameter'
+              title='Create parameter'
+            >
+              <Plus className='size-4' />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
           {!filtered.length ? (
@@ -140,45 +197,65 @@ export default function SsmPage() {
             <CardTitle className='text-base'>Parameter Value</CardTitle>
           </CardHeader>
           <CardContent className='min-h-0 lg:flex-1'>
-            <BoundedTextarea value={selectedValue} onChange={(event) => setSelectedValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[220px]' maxHeightClassName='max-h-[56vh]' disabled />
+            <BoundedTextarea value={selectedValue} onChange={(event) => setSelectedValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[220px]' maxHeightClassName='max-h-[56vh]' disabled={!selectedName} />
           </CardContent>
         </Card>
 
-        <Card className='min-h-[280px] min-w-0 rounded-md shadow-none'>
+        <Card className='min-h-[220px] min-w-0 rounded-md shadow-none'>
           <CardHeader>
-            <CardTitle className='text-base'>Create or Update</CardTitle>
+            <CardTitle className='text-base'>Update Selected</CardTitle>
           </CardHeader>
           <CardContent className='grid gap-3'>
-            <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder='Parameter name (e.g. /app/config)' />
-            <Input value={newDescription} onChange={(event) => setNewDescription(event.target.value)} placeholder='Description (optional)' />
-            <div className='grid gap-2 sm:grid-cols-2'>
-              <div className='flex gap-2'>
-                <Button type='button' variant={newType === 'String' ? 'default' : 'outline'} size='sm' onClick={() => setNewType('String')}>
-                  String
-                </Button>
-                <Button type='button' variant={newType === 'SecureString' ? 'default' : 'outline'} size='sm' onClick={() => setNewType('SecureString')}>
-                  SecureString
-                </Button>
-              </div>
-              <div className='flex gap-2'>
-                <Button type='button' variant={newTier === 'Standard' ? 'default' : 'outline'} size='sm' onClick={() => setNewTier('Standard')}>
-                  Standard
-                </Button>
-                <Button type='button' variant={newTier === 'Advanced' ? 'default' : 'outline'} size='sm' onClick={() => setNewTier('Advanced')}>
-                  Advanced
-                </Button>
-                <Button type='button' variant={newTier === 'Intelligent-Tiering' ? 'default' : 'outline'} size='sm' onClick={() => setNewTier('Intelligent-Tiering')}>
-                  Intelligent
-                </Button>
-              </div>
-            </div>
-            <BoundedTextarea value={newValue} onChange={(event) => setNewValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[130px]' maxHeightClassName='max-h-[32vh]' />
-            <Button onClick={() => void saveParameter()} disabled={loading || !newName.trim()}>
+            <Input value={selectedName || ''} disabled placeholder='Select a parameter' />
+            <Button onClick={() => void updateSelectedParameter()} disabled={loading || !selectedName.trim()}>
               Save Parameter
             </Button>
           </CardContent>
         </Card>
       </ServicePanelColumn>
+
+      <CreateResourceDialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setCreateError('');
+        }}
+        title='Create SSM Parameter'
+        description='Create a new parameter in local Floci.'
+        label='Parameter Name'
+        placeholder='Parameter name (e.g. /app/config)'
+        confirmLabel='Create Parameter'
+        submitting={creating}
+        initialValue={DEFAULT_CREATE_NAME}
+        errorMessage={createError}
+        onSubmit={createParameter}
+      >
+        <div className='grid gap-3'>
+          <Input value={createDescription} onChange={(event) => setCreateDescription(event.target.value)} placeholder='Description (optional)' />
+          <div className='grid gap-2 sm:grid-cols-2'>
+            <div className='flex gap-2'>
+              <Button type='button' variant={createType === 'String' ? 'default' : 'outline'} size='sm' onClick={() => setCreateType('String')}>
+                String
+              </Button>
+              <Button type='button' variant={createType === 'SecureString' ? 'default' : 'outline'} size='sm' onClick={() => setCreateType('SecureString')}>
+                SecureString
+              </Button>
+            </div>
+            <div className='flex gap-2'>
+              <Button type='button' variant={createTier === 'Standard' ? 'default' : 'outline'} size='sm' onClick={() => setCreateTier('Standard')}>
+                Standard
+              </Button>
+              <Button type='button' variant={createTier === 'Advanced' ? 'default' : 'outline'} size='sm' onClick={() => setCreateTier('Advanced')}>
+                Advanced
+              </Button>
+              <Button type='button' variant={createTier === 'Intelligent-Tiering' ? 'default' : 'outline'} size='sm' onClick={() => setCreateTier('Intelligent-Tiering')}>
+                Intelligent
+              </Button>
+            </div>
+          </div>
+          <BoundedTextarea value={createValue} onChange={(event) => setCreateValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[130px]' maxHeightClassName='max-h-[32vh]' />
+        </div>
+      </CreateResourceDialog>
     </ServiceShell>
   );
 }

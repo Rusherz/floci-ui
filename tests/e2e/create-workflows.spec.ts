@@ -373,13 +373,14 @@ test.describe('Create workflows', () => {
     created.ssmParameters.push(name);
     await page.goto('/ssm');
 
-    const editor = page.locator('section').filter({ hasText: 'Create or Update' }).first();
-    await editor.getByPlaceholder('Parameter name (e.g. /app/config)').fill(name);
-    await editor.getByRole('textbox').last().fill('{"enabled": true}');
-    await editor.getByRole('button', { name: 'Save Parameter' }).click();
+    await page.getByRole('button', { name: 'Create parameter' }).click();
+    await page.getByPlaceholder('Parameter name (e.g. /app/config)').fill(name);
+    await page.getByRole('button', { name: 'Create Parameter' }).last().click();
     await expectListContainsName(page, name);
 
-    await editor.getByRole('button', { name: 'Save Parameter' }).click();
+    const valuePanel = page.locator('div').filter({ has: page.getByRole('heading', { name: 'Parameter Value' }) }).first();
+    await valuePanel.locator('textarea').first().fill('{"enabled": false}');
+    await page.getByRole('button', { name: 'Save Parameter' }).click();
     await expectListContainsName(page, name);
   });
 
