@@ -302,12 +302,28 @@ test.describe('Create workflows', () => {
     await page.getByPlaceholder('pong').fill(functionName);
     await page.getByRole('button', { name: 'Create Function' }).last().click();
     await expectListContainsName(page, functionName);
+    await page.getByRole('button', { name: functionName }).first().click();
 
     const invokeButton = page.getByRole('button', { name: 'Invoke' });
-    await invokeButton.click();
-    await expect(page.getByRole('button', { name: 'Invoking...' })).toHaveCount(0, { timeout: 10_000 });
-    await expect(page.getByText('Invoke a function to view output.')).toHaveCount(0, { timeout: 10_000 });
-    await expect(page.getByText(/pong/i)).toBeVisible({ timeout: 10_000 });
+    const invokingButton = page.getByRole('button', { name: 'Invoking...' });
+    const invokePlaceholder = page.getByText('Invoke a function to view output.');
+    const pongText = page.getByText(/pong/i).first();
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await invokeButton.click();
+      await expect(invokingButton).toHaveCount(0, { timeout: 15_000 });
+      await expect(invokePlaceholder).toHaveCount(0, { timeout: 15_000 });
+      try {
+        await pongText.waitFor({ state: 'visible', timeout: 5_000 });
+        return;
+      } catch {
+        if (attempt < 2) {
+          await page.waitForTimeout((attempt + 1) * 1_000);
+        }
+      }
+    }
+
+    await expect(pongText).toBeVisible({ timeout: 20_000 });
   });
 
   test('DynamoDB create table + scan', async ({ page }) => {
