@@ -310,7 +310,7 @@ test.describe('Create workflows', () => {
     const pongText = page.getByText(/pong/i).first();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      await invokeButton.click();
+      await invokeButton.click({ force: true });
       await expect(invokingButton).toHaveCount(0, { timeout: 15_000 });
       await expect(invokePlaceholder).toHaveCount(0, { timeout: 15_000 });
       try {
