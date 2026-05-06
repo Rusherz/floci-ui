@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -155,8 +156,8 @@ export default function SnsPage() {
               <CardHeader>
                 <div className='flex items-center justify-between gap-2'>
                   <CardTitle className='text-base'>Topics ({filteredTopics.length})</CardTitle>
-                  <Button size='sm' onClick={() => setCreateOpen(true)}>
-                    Create Topic
+                  <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create topic' title='Create topic'>
+                    <Plus className='size-4' />
                   </Button>
                 </div>
               </CardHeader>

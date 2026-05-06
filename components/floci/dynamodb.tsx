@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
@@ -195,8 +196,8 @@ export default function DynamoDbPage() {
               <CardHeader>
                 <div className='flex items-center justify-between gap-2'>
                   <CardTitle className='text-base'>Tables ({filteredTables.length})</CardTitle>
-                  <Button size='sm' onClick={() => setCreateOpen(true)}>
-                    Create Table
+                  <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create table' title='Create table'>
+                    <Plus className='size-4' />
                   </Button>
                 </div>
               </CardHeader>

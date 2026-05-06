@@ -2,6 +2,7 @@
 
 import { type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
+import { Pencil, Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -486,8 +487,8 @@ export default function LambdaPage() {
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Functions ({filteredFunctions.length})</CardTitle>
-            <Button size='sm' onClick={() => setCreateOpen(true)}>
-              Create Function
+            <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create function' title='Create function'>
+              <Plus className='size-4' />
             </Button>
           </div>
         </CardHeader>
@@ -523,7 +524,17 @@ export default function LambdaPage() {
                 <div className='flex items-center justify-between gap-2'>
                   <CardTitle className='text-base'>Invoke</CardTitle>
                   <div className='flex gap-2'>
-                    <Button variant='outline' size='sm' onClick={() => setMode('edit')} disabled={!selectedFunctionName}>Edit</Button>
+                    <Button
+                      variant='outline'
+                      size='icon'
+                      className='size-9'
+                      onClick={() => setMode('edit')}
+                      disabled={!selectedFunctionName}
+                      aria-label='Edit function'
+                      title='Edit function'
+                    >
+                      <Pencil className='size-4' />
+                    </Button>
                     <Button size='sm' onClick={() => void invokeSelected()} disabled={invoking || !selectedFunctionName}>
                       {invoking ? 'Invoking...' : 'Invoke'}
                     </Button>

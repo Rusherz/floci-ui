@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { ExternalLink, Folder, Trash2 } from 'lucide-react';
+import { ExternalLink, Folder, Plus, Trash2 } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -1206,14 +1206,17 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                 <div className='flex items-center justify-between gap-2'>
                   <CardTitle className='text-base'>Queues ({filteredQueues.length})</CardTitle>
                   <Button
-                    size='sm'
+                    size='icon'
+                    className='size-9'
+                    aria-label='Create queue'
+                    title='Create queue'
                     onClick={() => {
                       setCreateError('');
                       setSqsAdvancedOpen(false);
                       setCreateQueueOpen(true);
                     }}
                   >
-                    Create Queue
+                    <Plus className='size-4' />
                   </Button>
                 </div>
               </CardHeader>
@@ -1324,14 +1327,17 @@ function OpsConsoleBase({ view }: OpsConsoleProps) {
                 <div className='flex items-center justify-between gap-2'>
                   <CardTitle className='text-base'>Buckets ({state.s3.buckets.length})</CardTitle>
                   <Button
-                    size='sm'
+                    size='icon'
+                    className='size-9'
+                    aria-label='Create bucket'
+                    title='Create bucket'
                     onClick={() => {
                       setCreateError('');
                       setS3AdvancedOpen(false);
                       setCreateBucketOpen(true);
                     }}
                   >
-                    Create Bucket
+                    <Plus className='size-4' />
                   </Button>
                 </div>
               </CardHeader>

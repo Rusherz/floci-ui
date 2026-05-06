@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -148,8 +149,8 @@ export default function SecretsManagerPage() {
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Secrets ({filtered.length})</CardTitle>
-            <Button size='sm' onClick={() => setCreateOpen(true)}>
-              Create Secret
+            <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create secret' title='Create secret'>
+              <Plus className='size-4' />
             </Button>
           </div>
         </CardHeader>

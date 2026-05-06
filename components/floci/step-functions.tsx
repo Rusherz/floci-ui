@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -163,8 +164,8 @@ export default function StepFunctionsPage() {
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>State Machines ({filtered.length})</CardTitle>
-            <Button size='sm' onClick={() => setCreateOpen(true)}>
-              Create State Machine
+            <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create state machine' title='Create state machine'>
+              <Plus className='size-4' />
             </Button>
           </div>
         </CardHeader>

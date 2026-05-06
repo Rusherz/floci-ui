@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -28,8 +29,8 @@ export default function EventBridgePage() {
   const [detail, setDetail] = useState('{\n  "ok": true\n}');
   const [status, setStatus] = useState<{ type: 'info' | 'error' | null; message: string }>({ type: null, message: '' });
   const [loading, setLoading] = useState(false);
-  const [createBusOpen, setCreateBusOpen] = useState(false);
-  const [createRuleOpen, setCreateRuleOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createStage, setCreateStage] = useState<'bus' | 'rule'>('bus');
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
   const [rulePattern, setRulePattern] = useState('{\n  "source": ["floci.ui"]\n}');
@@ -137,7 +138,7 @@ export default function EventBridgePage() {
     try {
       await api.createEventBus(name);
       await refreshBusOptimistically(name);
-      setCreateBusOpen(false);
+      setCreateOpen(false);
       setStatus({ type: 'info', message: `Created bus ${name}.` });
       logCreateAction('eventbridge-bus', 'success', { name });
     } catch (error) {
@@ -178,7 +179,7 @@ export default function EventBridgePage() {
         eventBusName: selectedBus,
         state: 'ENABLED',
       });
-      setCreateRuleOpen(false);
+      setCreateOpen(false);
       setStatus({ type: 'info', message: `Created rule ${name}.` });
       logCreateAction('eventbridge-rule', 'success', { name, bus: selectedBus, mode: ruleMode });
     } catch (error) {
@@ -188,6 +189,14 @@ export default function EventBridgePage() {
       setCreating(false);
     }
   }, [api, refreshRulesOptimistically, ruleMode, rulePattern, scheduleExpression, selectedBus]);
+
+  const handleCreate = useCallback(async (nameRaw: string) => {
+    if (createStage === 'bus') {
+      await createBus(nameRaw);
+      return;
+    }
+    await createRule(nameRaw);
+  }, [createBus, createRule, createStage]);
 
   return (
     <ServiceShell
@@ -205,10 +214,15 @@ export default function EventBridgePage() {
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Rules ({filtered.length})</CardTitle>
-            <div className='flex gap-2'>
-              <Button size='sm' variant='outline' onClick={() => setCreateBusOpen(true)}>Create Bus</Button>
-              <Button size='sm' onClick={() => setCreateRuleOpen(true)} disabled={!selectedBus}>Create Rule</Button>
-            </div>
+            <Button
+              size='icon'
+              className='size-9'
+              onClick={() => setCreateOpen(true)}
+              aria-label='Create eventbridge resource'
+              title='Create eventbridge resource'
+            >
+              <Plus className='size-4' />
+            </Button>
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
@@ -272,52 +286,63 @@ export default function EventBridgePage() {
         </Card>
       </ServicePanelColumn>
       <CreateResourceDialog
-        open={createBusOpen}
-        onOpenChange={(open) => { setCreateBusOpen(open); if (!open) setCreateError(''); }}
-        title='Create Event Bus'
-        description='Create a new EventBridge bus.'
-        label='Bus Name'
-        placeholder='custom-bus'
-        confirmLabel='Create Bus'
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setCreateError('');
+        }}
+        title='Create EventBridge Resource'
+        description={createStage === 'bus' ? 'Create a new EventBridge bus.' : `Create a rule on bus ${selectedBus || 'default'}.`}
+        label={createStage === 'bus' ? 'Bus Name' : 'Rule Name'}
+        placeholder={createStage === 'bus' ? 'custom-bus' : 'my-rule'}
+        confirmLabel={createStage === 'bus' ? 'Create Bus' : 'Create Rule'}
         submitting={creating}
         errorMessage={createError}
-        onSubmit={createBus}
-      />
-      <CreateResourceDialog
-        open={createRuleOpen}
-        onOpenChange={(open) => { setCreateRuleOpen(open); if (!open) setCreateError(''); }}
-        title='Create Event Rule'
-        description={`Create a rule on bus ${selectedBus || 'default'}.`}
-        label='Rule Name'
-        placeholder='my-rule'
-        confirmLabel='Create Rule'
-        submitting={creating}
-        errorMessage={createError}
-        onSubmit={createRule}
+        onSubmit={handleCreate}
       >
         <div className='grid gap-2'>
           <div className='grid gap-1'>
-            <p className='text-xs text-muted-foreground'>Rule Type</p>
+            <p className='text-xs text-muted-foreground'>Create Stage</p>
             <div className='flex gap-2'>
-              <Button type='button' size='sm' variant={ruleMode === 'pattern' ? 'default' : 'outline'} onClick={() => setRuleMode('pattern')}>
-                Event Pattern
+              <Button type='button' size='sm' variant={createStage === 'bus' ? 'default' : 'outline'} onClick={() => setCreateStage('bus')}>
+                Bus
               </Button>
-              <Button type='button' size='sm' variant={ruleMode === 'schedule' ? 'default' : 'outline'} onClick={() => setRuleMode('schedule')}>
-                Schedule
+              <Button type='button' size='sm' variant={createStage === 'rule' ? 'default' : 'outline'} onClick={() => setCreateStage('rule')}>
+                Rule
               </Button>
             </div>
           </div>
-          {ruleMode === 'pattern' ? (
-            <div className='grid gap-1'>
-              <p className='text-xs text-muted-foreground'>Event Pattern JSON</p>
-              <BoundedTextarea value={rulePattern} onChange={(event) => setRulePattern(event.target.value)} className='font-mono' minHeightClassName='min-h-[100px]' maxHeightClassName='max-h-[24vh]' />
-            </div>
-          ) : (
-            <div className='grid gap-1'>
-              <p className='text-xs text-muted-foreground'>Schedule Expression</p>
-              <Input value={scheduleExpression} onChange={(event) => setScheduleExpression(event.target.value)} placeholder='rate(5 minutes)' />
-            </div>
-          )}
+
+          {createStage === 'rule' ? (
+            <>
+              <div className='grid gap-1'>
+                <p className='text-xs text-muted-foreground'>Event Bus Name</p>
+                <Input value={selectedBus} onChange={(event) => setSelectedBus(event.target.value)} placeholder='default' />
+              </div>
+              <div className='grid gap-1'>
+                <p className='text-xs text-muted-foreground'>Rule Type</p>
+                <div className='flex gap-2'>
+                  <Button type='button' size='sm' variant={ruleMode === 'pattern' ? 'default' : 'outline'} onClick={() => setRuleMode('pattern')}>
+                    Event Pattern
+                  </Button>
+                  <Button type='button' size='sm' variant={ruleMode === 'schedule' ? 'default' : 'outline'} onClick={() => setRuleMode('schedule')}>
+                    Schedule
+                  </Button>
+                </div>
+              </div>
+              {ruleMode === 'pattern' ? (
+                <div className='grid gap-1'>
+                  <p className='text-xs text-muted-foreground'>Event Pattern JSON</p>
+                  <BoundedTextarea value={rulePattern} onChange={(event) => setRulePattern(event.target.value)} className='font-mono' minHeightClassName='min-h-[100px]' maxHeightClassName='max-h-[24vh]' />
+                </div>
+              ) : (
+                <div className='grid gap-1'>
+                  <p className='text-xs text-muted-foreground'>Schedule Expression</p>
+                  <Input value={scheduleExpression} onChange={(event) => setScheduleExpression(event.target.value)} placeholder='rate(5 minutes)' />
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
       </CreateResourceDialog>
     </ServiceShell>

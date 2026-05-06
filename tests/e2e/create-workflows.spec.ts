@@ -334,12 +334,15 @@ test.describe('Create workflows', () => {
     created.eventRules.push({ name: rule, bus });
     await page.goto('/eventbridge');
 
-    await createFromDialog(page, 'Create Bus', bus, 'Create Bus', 'custom-bus');
+    await page.getByRole('button', { name: 'Create eventbridge resource' }).click();
+    await page.getByRole('button', { name: /^Bus$/ }).click();
+    await page.getByPlaceholder('custom-bus').fill(bus);
+    await page.getByRole('button', { name: 'Create Bus' }).last().click();
     const busInput = page.getByPlaceholder('Event bus name');
     await expect(busInput).toHaveValue(bus);
-    await expect(page.getByRole('button', { name: 'Create Rule' })).toBeEnabled();
 
-    await page.getByRole('button', { name: 'Create Rule' }).click();
+    await page.getByRole('button', { name: 'Create eventbridge resource' }).click();
+    await page.getByRole('button', { name: /^Rule$/ }).click();
     await page.getByPlaceholder('my-rule').fill(rule);
     await page.getByRole('button', { name: 'Schedule' }).click();
     await page.getByPlaceholder('rate(5 minutes)').fill('rate(15 minutes)');
