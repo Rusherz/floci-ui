@@ -13,6 +13,7 @@ type CreatedResources = {
   queues: string[];
   topics: string[];
   tables: string[];
+  lambdaFunctions: string[];
   eventBuses: string[];
   eventRules: Array<{ name: string; bus: string }>;
   stateMachines: string[];
@@ -29,6 +30,7 @@ function createTracker(): CreatedResources {
     queues: [],
     topics: [],
     tables: [],
+    lambdaFunctions: [],
     eventBuses: [],
     eventRules: [],
     stateMachines: [],
@@ -80,6 +82,9 @@ async function awsJsonAction(request: APIRequestContext, target: string, payload
 async function cleanupTrackedResources(request: APIRequestContext, tracker: CreatedResources): Promise<void> {
   for (const group of tracker.logGroups) {
     await awsJsonAction(request, 'Logs_20140328.DeleteLogGroup', { logGroupName: group }).catch(() => undefined);
+  }
+  for (const functionName of tracker.lambdaFunctions) {
+    await request.delete(`/floci/2015-03-31/functions/${encodeURIComponent(functionName)}`).catch(() => undefined);
   }
   for (const secretId of tracker.secrets) {
     await awsJsonAction(request, 'secretsmanager.DeleteSecret', { SecretId: secretId, ForceDeleteWithoutRecovery: true }).catch(() => undefined);
@@ -187,6 +192,14 @@ async function sweepStaleTestResources(request: APIRequestContext): Promise<void
     if (g.logGroupName?.startsWith('/aws/pw/')) tracked.logGroups.push(g.logGroupName);
   }
 
+  const listFunctionsResp = await request.get('/floci/2015-03-31/functions/', {
+    headers: { Accept: 'application/json,*/*' },
+  });
+  const listFunctionsJson = await listFunctionsResp.json();
+  for (const entry of (listFunctionsJson.Functions || []) as Array<{ FunctionName?: string }>) {
+    if (entry.FunctionName?.startsWith('pw-fn-')) tracked.lambdaFunctions.push(entry.FunctionName);
+  }
+
   const listBucketsResp = await request.get('/floci', { headers: { Accept: 'application/xml,text/xml,*/*' } });
   const listBucketsXml = await listBucketsResp.text();
   for (const name of extractAll(listBucketsXml, 'Name')) {
@@ -237,7 +250,7 @@ test.describe('Create workflows', () => {
     await expectListContainsName(page, bucket);
   });
 
-  test('SQS create queue', async ({ page }) => {
+  test('SQS create queue + receive/send/delete', async ({ page, request }) => {
     const created = createTracker();
     createdByTestId.set(test.info().testId, created);
     const queue = uniqueName('pw-queue');
@@ -245,6 +258,23 @@ test.describe('Create workflows', () => {
     await page.goto('/sqs');
     await createFromDialog(page, 'Create Queue', queue, 'Create Queue', 'my-queue');
     await expectListContainsName(page, queue);
+
+    const queueUrl = `http://localhost:4566/${accountId}/${queue}`;
+    const sendResult = await sqsAction(request, 'SendMessage', {
+      QueueUrl: queueUrl,
+      MessageBody: 'playwright sqs smoke message',
+    });
+    const messageId = extractAll(sendResult, 'MessageId')[0] || '';
+    expect(messageId).not.toBe('');
+
+    await page.getByRole('button', { name: queue }).first().click();
+    await page.getByRole('button', { name: /refresh/i }).click();
+    await expect(page.getByRole('button', { name: messageId })).toBeVisible();
+
+    await page.getByRole('button', { name: messageId }).first().click();
+    await page.getByRole('button', { name: 'Delete selected message' }).click();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByRole('button', { name: messageId })).toHaveCount(0);
   });
 
   test('SNS create + publish', async ({ page }) => {
@@ -259,6 +289,25 @@ test.describe('Create workflows', () => {
     await page.getByPlaceholder('Message payload').fill('playwright test message');
     await page.getByRole('button', { name: 'Publish' }).click();
     await expect(page.getByText(/Published message/i)).toBeVisible();
+  });
+
+  test('Lambda create + invoke pong template', async ({ page }) => {
+    const created = createTracker();
+    createdByTestId.set(test.info().testId, created);
+    const functionName = uniqueName('pw-fn');
+    created.lambdaFunctions.push(functionName);
+
+    await page.goto('/lambda');
+    await page.getByRole('button', { name: 'Create Function' }).click();
+    await page.getByPlaceholder('pong').fill(functionName);
+    await page.getByRole('button', { name: 'Create Function' }).last().click();
+    await expectListContainsName(page, functionName);
+
+    const invokeButton = page.getByRole('button', { name: 'Invoke' });
+    await invokeButton.click();
+    await expect(page.getByRole('button', { name: 'Invoking...' })).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText('Invoke a function to view output.')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText(/pong/i)).toBeVisible({ timeout: 10_000 });
   });
 
   test('DynamoDB create table + scan', async ({ page }) => {

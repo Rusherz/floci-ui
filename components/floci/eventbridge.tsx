@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
-import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { EventRuleSummary, EventTargetSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -94,6 +94,21 @@ export default function EventBridgePage() {
     return rules.filter((r) => r.name.toLowerCase().includes(q));
   }, [rules, search]);
 
+  const refreshBusOptimistically = useOptimisticCreateRefresh<string>({
+    upsert: (busName) => {
+      setSelectedBus(busName);
+    },
+    refresh: loadBuses,
+  });
+
+  const refreshRulesOptimistically = useOptimisticCreateRefresh<EventRuleSummary>({
+    upsert: (rule) => {
+      setRules((current) => [rule, ...current.filter((candidate) => candidate.name !== rule.name)]);
+      setSelectedRule(rule.name);
+    },
+    refresh: loadRules,
+  });
+
   const sendTest = useCallback(async () => {
     try {
       JSON.parse(detail);
@@ -121,8 +136,7 @@ export default function EventBridgePage() {
     logCreateAction('eventbridge-bus', 'start', { name });
     try {
       await api.createEventBus(name);
-      setSelectedBus(name);
-      await loadBuses();
+      await refreshBusOptimistically(name);
       setCreateBusOpen(false);
       setStatus({ type: 'info', message: `Created bus ${name}.` });
       logCreateAction('eventbridge-bus', 'success', { name });
@@ -132,7 +146,7 @@ export default function EventBridgePage() {
     } finally {
       setCreating(false);
     }
-  }, [api, loadBuses]);
+  }, [api, refreshBusOptimistically]);
 
   const createRule = useCallback(async (nameRaw: string) => {
     const name = nameRaw.trim();
@@ -158,8 +172,12 @@ export default function EventBridgePage() {
         ruleMode === 'pattern' ? rulePattern : undefined,
         ruleMode === 'schedule' ? scheduleExpression.trim() : undefined
       );
-      await loadRules();
-      setSelectedRule(name);
+      await refreshRulesOptimistically({
+        name,
+        arn: '',
+        eventBusName: selectedBus,
+        state: 'ENABLED',
+      });
       setCreateRuleOpen(false);
       setStatus({ type: 'info', message: `Created rule ${name}.` });
       logCreateAction('eventbridge-rule', 'success', { name, bus: selectedBus, mode: ruleMode });
@@ -169,7 +187,7 @@ export default function EventBridgePage() {
     } finally {
       setCreating(false);
     }
-  }, [api, loadRules, ruleMode, rulePattern, scheduleExpression, selectedBus]);
+  }, [api, refreshRulesOptimistically, ruleMode, rulePattern, scheduleExpression, selectedBus]);
 
   return (
     <ServiceShell

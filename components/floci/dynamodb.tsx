@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
-import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { DynamoTableDescription, DynamoTableSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +33,9 @@ export default function DynamoDbPage() {
   const [creating, setCreating] = useState(false);
   const [partitionKey, setPartitionKey] = useState('id');
   const [sortKey, setSortKey] = useState('');
+  const [billingMode, setBillingMode] = useState<'PAY_PER_REQUEST' | 'PROVISIONED'>('PAY_PER_REQUEST');
+  const [readCapacityUnits, setReadCapacityUnits] = useState('5');
+  const [writeCapacityUnits, setWriteCapacityUnits] = useState('5');
 
   const loadTables = useCallback(async () => {
     setLoading(true);
@@ -89,6 +92,14 @@ export default function DynamoDbPage() {
     return tables.filter((table) => table.name.toLowerCase().includes(query));
   }, [search, tables]);
 
+  const refreshTablesOptimistically = useOptimisticCreateRefresh<DynamoTableSummary>({
+    upsert: (table) => {
+      setTables((current) => [table, ...current.filter((candidate) => candidate.name !== table.name)]);
+      setSelectedTable(table.name);
+    },
+    refresh: loadTables,
+  });
+
   const handleScan = useCallback(async () => {
     if (!selectedTable) return;
 
@@ -139,24 +150,33 @@ export default function DynamoDbPage() {
         setCreateError('Table name and partition key are required.');
         return;
       }
+      const readUnits = Number(readCapacityUnits.trim());
+      const writeUnits = Number(writeCapacityUnits.trim());
+      if (billingMode === 'PROVISIONED' && (!Number.isFinite(readUnits) || readUnits < 1 || !Number.isFinite(writeUnits) || writeUnits < 1)) {
+        setCreateError('Provisioned mode requires Read/Write capacity units of at least 1.');
+        return;
+      }
       setCreateError('');
       setCreating(true);
-      logCreateAction('dynamodb-table', 'start', { tableName });
+      logCreateAction('dynamodb-table', 'start', { tableName, billingMode });
       try {
-        await api.createDynamoTable(tableName, partitionKey.trim(), sortKey.trim());
-        await loadTables();
-        setSelectedTable(tableName);
+        await api.createDynamoTable(tableName, partitionKey.trim(), sortKey.trim(), {
+          billingMode,
+          readCapacityUnits: Math.floor(readUnits),
+          writeCapacityUnits: Math.floor(writeUnits),
+        });
+        await refreshTablesOptimistically({ name: tableName });
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created table ${tableName}.` });
-        logCreateAction('dynamodb-table', 'success', { tableName });
+        logCreateAction('dynamodb-table', 'success', { tableName, billingMode });
       } catch (error) {
-        logCreateAction('dynamodb-table', 'error', { tableName, error: error instanceof Error ? error.message : String(error) });
+        logCreateAction('dynamodb-table', 'error', { tableName, billingMode, error: error instanceof Error ? error.message : String(error) });
         setCreateError(getCreateErrorMessage(error, 'Failed to create table'));
       } finally {
         setCreating(false);
       }
     },
-    [api, loadTables, partitionKey, sortKey]
+    [api, billingMode, partitionKey, readCapacityUnits, refreshTablesOptimistically, sortKey, writeCapacityUnits]
   );
 
   return (
@@ -258,15 +278,50 @@ export default function DynamoDbPage() {
               errorMessage={createError}
               onSubmit={createTable}
             >
-              <div className='grid gap-2 rounded-md border p-3 sm:grid-cols-2'>
-                <div className='grid gap-1'>
-                  <p className='text-xs text-muted-foreground'>Partition Key</p>
-                  <Input value={partitionKey} onChange={(event) => setPartitionKey(event.target.value)} />
+              <div className='grid gap-2 rounded-md border p-3'>
+                <div className='grid gap-1 sm:grid-cols-2'>
+                  <div className='grid gap-1'>
+                    <p className='text-xs text-muted-foreground'>Partition Key</p>
+                    <Input value={partitionKey} onChange={(event) => setPartitionKey(event.target.value)} />
+                  </div>
+                  <div className='grid gap-1'>
+                    <p className='text-xs text-muted-foreground'>Sort Key (optional)</p>
+                    <Input value={sortKey} onChange={(event) => setSortKey(event.target.value)} />
+                  </div>
                 </div>
                 <div className='grid gap-1'>
-                  <p className='text-xs text-muted-foreground'>Sort Key (optional)</p>
-                  <Input value={sortKey} onChange={(event) => setSortKey(event.target.value)} />
+                  <p className='text-xs text-muted-foreground'>Billing Mode</p>
+                  <div className='grid grid-cols-2 gap-2'>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant={billingMode === 'PAY_PER_REQUEST' ? 'default' : 'outline'}
+                      onClick={() => setBillingMode('PAY_PER_REQUEST')}
+                    >
+                      PAY_PER_REQUEST
+                    </Button>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant={billingMode === 'PROVISIONED' ? 'default' : 'outline'}
+                      onClick={() => setBillingMode('PROVISIONED')}
+                    >
+                      PROVISIONED
+                    </Button>
+                  </div>
                 </div>
+                {billingMode === 'PROVISIONED' ? (
+                  <div className='grid gap-1 sm:grid-cols-2'>
+                    <div className='grid gap-1'>
+                      <p className='text-xs text-muted-foreground'>Read Capacity Units</p>
+                      <Input value={readCapacityUnits} onChange={(event) => setReadCapacityUnits(event.target.value)} inputMode='numeric' />
+                    </div>
+                    <div className='grid gap-1'>
+                      <p className='text-xs text-muted-foreground'>Write Capacity Units</p>
+                      <Input value={writeCapacityUnits} onChange={(event) => setWriteCapacityUnits(event.target.value)} inputMode='numeric' />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </CreateResourceDialog>
     </ServiceShell>

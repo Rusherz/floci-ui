@@ -65,8 +65,13 @@ Create actions are available across S3, SQS, SNS, DynamoDB, Lambda, EventBridge,
 ### Caveats
 
 - Some services intentionally expose a simplified create form first (for example, no full advanced-option coverage).
-- Lambda creation currently expects a ZIP payload upload in the dialog.
-- Manual smoke tests for each create flow are still tracked in [`FLOCI_CREATE_WORKFLOWS_PLAN.md`](./FLOCI_CREATE_WORKFLOWS_PLAN.md).
+- Lambda creation supports both inline template code and ZIP payload upload in the dialog.
+
+### Create Outcome Copy Guidelines
+
+- Start: use direct progress copy such as `Creating <resource>...`
+- Success: use completed action copy such as `Created <resource>.`
+- Error: use action-specific failure copy such as `Failed to create <resource>.` and append mapped AWS/Floci detail
 
 ## Build
 

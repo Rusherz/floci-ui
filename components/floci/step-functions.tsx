@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
-import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { StepFunctionExecutionSummary, StepFunctionStateMachineSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -77,6 +77,14 @@ export default function StepFunctionsPage() {
     return stateMachines.filter((sm) => sm.name.toLowerCase().includes(q));
   }, [search, stateMachines]);
 
+  const refreshStateMachinesOptimistically = useOptimisticCreateRefresh<StepFunctionStateMachineSummary>({
+    upsert: (machine) => {
+      setStateMachines((current) => [machine, ...current.filter((candidate) => candidate.arn !== machine.arn && candidate.name !== machine.name)]);
+      setSelectedArn(machine.arn || machine.name);
+    },
+    refresh: loadStateMachines,
+  });
+
   const startExecution = useCallback(async () => {
     if (!selectedArn) {
       setStatus({ type: 'error', message: 'Select a state machine first.' });
@@ -120,8 +128,12 @@ export default function StepFunctionsPage() {
       logCreateAction('step-function', 'start', { name, machineType });
       try {
         const arn = await api.createStepFunctionsStateMachine(name, roleArn.trim(), definition, machineType);
-        await loadStateMachines();
-        setSelectedArn(arn);
+        await refreshStateMachinesOptimistically({
+          name,
+          arn,
+          type: machineType,
+          creationDate: '',
+        });
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created state machine ${name}.` });
         logCreateAction('step-function', 'success', { name, arn, machineType });
@@ -132,7 +144,7 @@ export default function StepFunctionsPage() {
         setCreating(false);
       }
     },
-    [api, definition, loadStateMachines, machineType, roleArn]
+    [api, definition, machineType, refreshStateMachinesOptimistically, roleArn]
   );
 
   return (

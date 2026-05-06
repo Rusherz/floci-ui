@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
+import { asyncActionError, asyncActionIdle, asyncActionLoading, asyncActionSuccess, createAsyncActionState, getCreateErrorMessage, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { LambdaFunctionSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +24,18 @@ type EditorEntry = {
   text: string;
   data: Uint8Array;
 };
+
+type CreateSourceMode = 'inline' | 'upload';
+
+const INLINE_TEMPLATE_FILENAME = 'index.js';
+const INLINE_PONG_TEMPLATE = `exports.handler = async (event) => {
+  return {
+    pong: true,
+    received: event ?? null,
+    timestamp: new Date().toISOString(),
+  };
+};
+`;
 
 function toBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -146,12 +159,13 @@ export default function LambdaPage() {
   const [loading, setLoading] = useState(false);
   const [invoking, setInvoking] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createError, setCreateError] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [createActionState, setCreateActionState] = useState(createAsyncActionState());
+  const [createSourceMode, setCreateSourceMode] = useState<CreateSourceMode>('inline');
   const [runtime, setRuntime] = useState('nodejs18.x');
   const [handler, setHandler] = useState('index.handler');
   const [roleArn, setRoleArn] = useState('arn:aws:iam::000000000000:role/lambda-role');
   const [createZipFile, setCreateZipFile] = useState<File | null>(null);
+  const [inlineTemplate, setInlineTemplate] = useState(INLINE_PONG_TEMPLATE);
 
   const [mode, setMode] = useState<'invoke' | 'edit'>('invoke');
   const [entries, setEntries] = useState<EditorEntry[]>([]);
@@ -161,6 +175,7 @@ export default function LambdaPage() {
   const [savingCode, setSavingCode] = useState(false);
   const [loadingCode, setLoadingCode] = useState(false);
   const editorPreviewRef = useRef<HTMLPreElement | null>(null);
+  const inlineTemplatePreviewRef = useRef<HTMLPreElement | null>(null);
 
   const loadFunctions = useCallback(async () => {
     setLoading(true);
@@ -190,6 +205,14 @@ export default function LambdaPage() {
     if (!query) return functions;
     return functions.filter((fn) => fn.name.toLowerCase().includes(query));
   }, [functions, search]);
+
+  const refreshFunctionsOptimistically = useOptimisticCreateRefresh<LambdaFunctionSummary>({
+    upsert: (fn) => {
+      setFunctions((current) => [fn, ...current.filter((candidate) => candidate.name !== fn.name)]);
+      setSelectedFunctionName(fn.name);
+    },
+    refresh: loadFunctions,
+  });
 
   const selectedFunction = functions.find((fn) => fn.name === selectedFunctionName) || null;
 
@@ -372,42 +395,71 @@ export default function LambdaPage() {
     async (nameRaw: string) => {
       const name = nameRaw.trim();
       if (!name) {
-        setCreateError('Function name is required.');
+        setCreateActionState(asyncActionError('Function name is required.'));
         return;
       }
       if (!roleArn.trim()) {
-        setCreateError('Role ARN is required.');
+        setCreateActionState(asyncActionError('Role ARN is required.'));
         return;
       }
-      if (!createZipFile) {
-        setCreateError('ZIP file is required.');
+      if (createSourceMode === 'upload' && !createZipFile) {
+        setCreateActionState(asyncActionError('ZIP file is required for upload mode.'));
         return;
       }
-      setCreateError('');
-      setCreating(true);
+      if (createSourceMode === 'inline' && !inlineTemplate.trim()) {
+        setCreateActionState(asyncActionError('Inline template code is required.'));
+        return;
+      }
+      setCreateActionState(asyncActionLoading('Creating Lambda function...'));
+      logCreateAction('lambda-function', 'start', { name, createSourceMode, runtime: runtime.trim(), handler: handler.trim() });
       try {
-        const zipBytes = new Uint8Array(await createZipFile.arrayBuffer());
+        let zipBytes: Uint8Array;
+        if (createSourceMode === 'upload') {
+          zipBytes = new Uint8Array(await createZipFile!.arrayBuffer());
+        } else {
+          const zip = new JSZip();
+          zip.file(INLINE_TEMPLATE_FILENAME, inlineTemplate);
+          zipBytes = await zip.generateAsync({ type: 'uint8array' });
+        }
         await api.createLambdaFunction(name, roleArn.trim(), toBase64(zipBytes), runtime.trim(), handler.trim());
-        await loadFunctions();
-        setSelectedFunctionName(name);
+        await refreshFunctionsOptimistically({
+          name,
+          runtime: runtime.trim(),
+          handler: handler.trim(),
+          lastModified: '',
+          arn: '',
+        });
         setCreateOpen(false);
         setCreateZipFile(null);
+        setCreateSourceMode('inline');
+        setCreateActionState(asyncActionSuccess(`Created function ${name}.`));
         setStatus({ type: 'info', message: `Created function ${name}.` });
+        logCreateAction('lambda-function', 'success', { name, createSourceMode });
       } catch (error) {
-        setCreateError(error instanceof Error ? error.message : 'Failed to create function');
-      } finally {
-        setCreating(false);
+        logCreateAction('lambda-function', 'error', { name, createSourceMode, error: error instanceof Error ? error.message : String(error) });
+        setCreateActionState(asyncActionError(getCreateErrorMessage(error, 'Failed to create function')));
       }
     },
-    [api, createZipFile, handler, loadFunctions, roleArn, runtime]
+    [api, createSourceMode, createZipFile, handler, inlineTemplate, refreshFunctionsOptimistically, roleArn, runtime]
   );
 
   const highlighted = useMemo(() => {
     return highlightCode(editorValue, selectedPath || 'index.js');
   }, [editorValue, selectedPath]);
 
+  const highlightedInlineTemplate = useMemo(() => {
+    return highlightCode(inlineTemplate, INLINE_TEMPLATE_FILENAME);
+  }, [inlineTemplate]);
+
   const syncEditorPreviewScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
     const preview = editorPreviewRef.current;
+    if (!preview) return;
+    preview.scrollTop = event.currentTarget.scrollTop;
+    preview.scrollLeft = event.currentTarget.scrollLeft;
+  }, []);
+
+  const syncInlineTemplatePreviewScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
+    const preview = inlineTemplatePreviewRef.current;
     if (!preview) return;
     preview.scrollTop = event.currentTarget.scrollTop;
     preview.scrollLeft = event.currentTarget.scrollLeft;
@@ -587,19 +639,33 @@ export default function LambdaPage() {
         open={createOpen}
         onOpenChange={(open) => {
           setCreateOpen(open);
-          if (!open) setCreateError('');
+          setCreateActionState(asyncActionIdle());
+          if (!open) {
+            setCreateZipFile(null);
+          }
         }}
         title='Create Lambda Function'
-        description='Create requires uploading a ZIP package containing function code.'
+        description='Create from an inline template or upload a ZIP package.'
         label='Function Name'
         placeholder='pong'
         confirmLabel='Create Function'
-        submitting={creating}
-        errorMessage={createError}
-        submitDisabled={!createZipFile}
+        submitting={createActionState.phase === 'loading'}
+        errorMessage={createActionState.phase === 'error' ? createActionState.message : ''}
+        submitDisabled={createSourceMode === 'upload' ? !createZipFile : !inlineTemplate.trim()}
         onSubmit={createFunction}
       >
         <div className='grid gap-2 rounded-md border p-3'>
+          <div className='grid gap-1'>
+            <p className='text-xs text-muted-foreground'>Source Mode</p>
+            <div className='grid grid-cols-2 gap-2'>
+              <Button type='button' variant={createSourceMode === 'inline' ? 'default' : 'outline'} size='sm' onClick={() => setCreateSourceMode('inline')}>
+                Inline template
+              </Button>
+              <Button type='button' variant={createSourceMode === 'upload' ? 'default' : 'outline'} size='sm' onClick={() => setCreateSourceMode('upload')}>
+                Upload ZIP
+              </Button>
+            </div>
+          </div>
           <div className='grid gap-1 sm:grid-cols-2 sm:gap-2'>
             <div className='grid gap-1'>
               <p className='text-xs text-muted-foreground'>Runtime</p>
@@ -614,14 +680,41 @@ export default function LambdaPage() {
             <p className='text-xs text-muted-foreground'>Role ARN</p>
             <Input value={roleArn} onChange={(event) => setRoleArn(event.target.value)} />
           </div>
-          <div className='grid gap-1'>
-            <p className='text-xs text-muted-foreground'>Code ZIP (required)</p>
-            <Input
-              type='file'
-              accept='.zip,application/zip'
-              onChange={(event) => setCreateZipFile(event.target.files?.[0] || null)}
-            />
-          </div>
+          {createSourceMode === 'inline' ? (
+            <div className='grid gap-1'>
+              <div className='flex items-center justify-between gap-2'>
+                <p className='text-xs text-muted-foreground'>Inline Template ({INLINE_TEMPLATE_FILENAME})</p>
+                <Button type='button' variant='outline' size='sm' onClick={() => setInlineTemplate(INLINE_PONG_TEMPLATE)}>
+                  Reset Template
+                </Button>
+              </div>
+              <div className='relative overflow-hidden rounded-md border bg-slate-950/70'>
+                <pre
+                  aria-hidden='true'
+                  ref={inlineTemplatePreviewRef}
+                  className='pointer-events-none min-h-[240px] max-h-[42vh] overflow-auto p-3 font-mono text-sm leading-6 text-slate-100'
+                >
+                  <code dangerouslySetInnerHTML={{ __html: highlightedInlineTemplate + '\n' }} />
+                </pre>
+                <Textarea
+                  value={inlineTemplate}
+                  onChange={(event) => setInlineTemplate(event.target.value)}
+                  onScroll={syncInlineTemplatePreviewScroll}
+                  className='absolute inset-0 h-full w-full resize-none overflow-auto border-0 bg-transparent p-3 font-mono text-sm leading-6 text-transparent caret-slate-100 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0'
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className='grid gap-1'>
+              <p className='text-xs text-muted-foreground'>Code ZIP (required)</p>
+              <Input
+                type='file'
+                accept='.zip,application/zip'
+                onChange={(event) => setCreateZipFile(event.target.files?.[0] || null)}
+              />
+            </div>
+          )}
         </div>
       </CreateResourceDialog>
     </ServiceShell>

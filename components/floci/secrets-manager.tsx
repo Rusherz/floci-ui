@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
-import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
+import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { SecretDetails, SecretSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -75,6 +75,14 @@ export default function SecretsManagerPage() {
     return secrets.filter((secret) => secret.name.toLowerCase().includes(q));
   }, [search, secrets]);
 
+  const refreshSecretsOptimistically = useOptimisticCreateRefresh<SecretSummary>({
+    upsert: (secret) => {
+      setSecrets((current) => [secret, ...current.filter((candidate) => candidate.arn !== secret.arn && candidate.name !== secret.name)]);
+      setSelectedSecretId(secret.arn || secret.name);
+    },
+    refresh: loadSecrets,
+  });
+
   const saveValue = useCallback(async () => {
     if (!selectedSecretId) {
       setStatus({ type: 'error', message: 'Select a secret first.' });
@@ -105,8 +113,12 @@ export default function SecretsManagerPage() {
       logCreateAction('secret', 'start', { name });
       try {
         const arn = await api.createSecret(name, value, createDescription.trim());
-        await loadSecrets();
-        setSelectedSecretId(arn || name);
+        await refreshSecretsOptimistically({
+          name,
+          arn,
+          description: createDescription.trim(),
+          lastChangedDate: '',
+        });
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created secret ${name}.` });
         logCreateAction('secret', 'success', { name, arn });
@@ -117,7 +129,7 @@ export default function SecretsManagerPage() {
         setCreating(false);
       }
     },
-    [api, createDescription, loadSecrets, value]
+    [api, createDescription, refreshSecretsOptimistically, value]
   );
 
   return (

@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
-import { getCreateErrorMessage, isValidCloudWatchLogGroupName, logCreateAction } from '@/lib/floci/create-workflows';
+import { getCreateErrorMessage, isValidCloudWatchLogGroupName, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { CloudWatchLogEvent, CloudWatchLogGroupSummary, CloudWatchLogStreamSummary } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -132,6 +132,17 @@ export default function CloudWatchPage() {
     if (!q) return groups;
     return groups.filter((group) => group.logGroupName.toLowerCase().includes(q));
   }, [groups, search]);
+
+  const refreshGroupsOptimistically = useOptimisticCreateRefresh<CloudWatchLogGroupSummary>({
+    upsert: (group) => {
+      setGroups((current) => [group, ...current.filter((candidate) => candidate.logGroupName !== group.logGroupName)]);
+      setSelectedGroups([group.logGroupName]);
+    },
+    refresh: async () => {
+      await loadGroups();
+      await loadStreams();
+    },
+  });
 
   const handleSelectGroup = useCallback(
     (index: number, event?: MouseEvent<HTMLButtonElement>) => {
@@ -277,8 +288,11 @@ export default function CloudWatchPage() {
       logCreateAction('cloudwatch-log-group', 'start', { name });
       try {
         await api.createLogGroup(name);
-        await loadGroups();
-        setSelectedGroups([name]);
+        await refreshGroupsOptimistically({
+          logGroupName: name,
+          storedBytes: 0,
+          retentionInDays: 0,
+        });
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created log group ${name}.` });
         logCreateAction('cloudwatch-log-group', 'success', { name });
@@ -289,7 +303,7 @@ export default function CloudWatchPage() {
         setCreating(false);
       }
     },
-    [api, loadGroups]
+    [api, refreshGroupsOptimistically]
   );
 
   const clearSelectedGroups = useCallback(async () => {

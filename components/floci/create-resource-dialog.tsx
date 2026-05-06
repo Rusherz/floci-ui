@@ -49,7 +49,7 @@ export function CreateResourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className='max-h-[90vh] w-[95vw] max-w-[95vw] overflow-y-auto md:w-[50vw] md:max-w-[50vw]'>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
-import { getCreateErrorMessage, isValidTopicName, logCreateAction } from '@/lib/floci/create-workflows';
+import { getCreateErrorMessage, isValidTopicName, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { SnsSubscription, SnsTopic } from '@/lib/floci/types';
 import { cn } from '@/lib/utils';
 
@@ -86,6 +86,14 @@ export default function SnsPage() {
     return topics.filter((topic) => topic.name.toLowerCase().includes(query));
   }, [search, topics]);
 
+  const refreshTopicsOptimistically = useOptimisticCreateRefresh<SnsTopic>({
+    upsert: (topic) => {
+      setTopics((current) => [topic, ...current.filter((candidate) => candidate.arn !== topic.arn && candidate.name !== topic.name)]);
+      setSelectedTopicArn(topic.arn);
+    },
+    refresh: loadTopics,
+  });
+
   const publishMessage = useCallback(async () => {
     if (!selectedTopicArn || !message.trim()) {
       setStatus({ type: 'error', message: 'Select a topic and provide a message first.' });
@@ -117,8 +125,7 @@ export default function SnsPage() {
       logCreateAction('sns-topic', 'start', { name });
       try {
         const arn = await api.createSnsTopic(name);
-        await loadTopics();
-        setSelectedTopicArn(arn);
+        await refreshTopicsOptimistically({ arn, name });
         setCreateOpen(false);
         setStatus({ type: 'info', message: `Created topic ${name}.` });
         logCreateAction('sns-topic', 'success', { name, arn });
@@ -129,7 +136,7 @@ export default function SnsPage() {
         setCreating(false);
       }
     },
-    [api, loadTopics]
+    [api, refreshTopicsOptimistically]
   );
 
   return (

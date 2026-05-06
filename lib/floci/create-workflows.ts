@@ -1,3 +1,44 @@
+import { useCallback } from 'react';
+
+export type AsyncActionPhase = 'idle' | 'loading' | 'success' | 'error';
+
+export type AsyncActionState = {
+  phase: AsyncActionPhase;
+  message: string;
+};
+
+export type CreateCopyGuideline = {
+  start: string;
+  success: string;
+  error: string;
+};
+
+export const CREATE_OUTCOME_COPY: CreateCopyGuideline = {
+  start: 'Creating resource...',
+  success: 'Resource created successfully.',
+  error: 'Failed to create resource.',
+};
+
+export function createAsyncActionState(phase: AsyncActionPhase = 'idle', message = ''): AsyncActionState {
+  return { phase, message };
+}
+
+export function asyncActionIdle(message = ''): AsyncActionState {
+  return createAsyncActionState('idle', message);
+}
+
+export function asyncActionLoading(message = CREATE_OUTCOME_COPY.start): AsyncActionState {
+  return createAsyncActionState('loading', message);
+}
+
+export function asyncActionSuccess(message = CREATE_OUTCOME_COPY.success): AsyncActionState {
+  return createAsyncActionState('success', message);
+}
+
+export function asyncActionError(message = CREATE_OUTCOME_COPY.error): AsyncActionState {
+  return createAsyncActionState('error', message);
+}
+
 export function getCreateErrorMessage(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : fallback;
 
@@ -33,4 +74,17 @@ export function logCreateAction(resource: string, stage: 'start' | 'success' | '
   if (process.env.NODE_ENV !== 'development') return;
   // Dev-only hook for troubleshooting create workflow behavior.
   console.debug(`[create:${resource}] ${stage}`, details);
+}
+
+export function useOptimisticCreateRefresh<T>({
+  upsert,
+  refresh,
+}: {
+  upsert: (resource: T) => void;
+  refresh: () => Promise<void>;
+}) {
+  return useCallback(async (resource: T) => {
+    upsert(resource);
+    await refresh();
+  }, [refresh, upsert]);
 }

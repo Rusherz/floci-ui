@@ -645,7 +645,16 @@ export function createApiClient(config: ApiConfig) {
     return items.map((item) => decodeDynamoItem(item));
   }
 
-  async function createDynamoTable(tableName: string, partitionKeyName: string, sortKeyName = ''): Promise<string> {
+  async function createDynamoTable(
+    tableName: string,
+    partitionKeyName: string,
+    sortKeyName = '',
+    options?: {
+      billingMode?: 'PAY_PER_REQUEST' | 'PROVISIONED';
+      readCapacityUnits?: number;
+      writeCapacityUnits?: number;
+    }
+  ): Promise<string> {
     const attributeDefinitions: Record<string, string>[] = [{ AttributeName: partitionKeyName, AttributeType: 'S' }];
     const keySchema: Record<string, string>[] = [{ AttributeName: partitionKeyName, KeyType: 'HASH' }];
     if (sortKeyName.trim()) {
@@ -653,11 +662,23 @@ export function createApiClient(config: ApiConfig) {
       keySchema.push({ AttributeName: sortKeyName.trim(), KeyType: 'RANGE' });
     }
 
-    const response = await dynamoAction<{ TableDescription?: Record<string, unknown> }>('CreateTable', {
+    const billingMode = options?.billingMode || 'PAY_PER_REQUEST';
+    const payload: Record<string, unknown> = {
       TableName: tableName,
       AttributeDefinitions: attributeDefinitions,
       KeySchema: keySchema,
-      BillingMode: 'PAY_PER_REQUEST',
+      BillingMode: billingMode,
+    };
+
+    if (billingMode === 'PROVISIONED') {
+      payload.ProvisionedThroughput = {
+        ReadCapacityUnits: options?.readCapacityUnits && options.readCapacityUnits > 0 ? Math.floor(options.readCapacityUnits) : 5,
+        WriteCapacityUnits: options?.writeCapacityUnits && options.writeCapacityUnits > 0 ? Math.floor(options.writeCapacityUnits) : 5,
+      };
+    }
+
+    const response = await dynamoAction<{ TableDescription?: Record<string, unknown> }>('CreateTable', {
+      ...payload,
     });
     return String(response.TableDescription?.TableArn || '');
   }
