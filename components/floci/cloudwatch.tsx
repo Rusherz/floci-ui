@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { filterBySearch } from '@/lib/floci/search';
+import { filterBySearch, normalizeSearchTerm } from '@/lib/floci/search';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isValidCloudWatchLogGroupName, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
@@ -129,6 +129,7 @@ export default function CloudWatchPage() {
   }, [loadStreams]);
 
   const filtered = useMemo(() => filterBySearch(groups, search, (group) => group.logGroupName), [groups, search]);
+  const normalizedMessageFilter = useMemo(() => normalizeSearchTerm(messageFilter), [messageFilter]);
 
   const refreshGroupsOptimistically = useOptimisticCreateRefresh<CloudWatchLogGroupSummary>({
     upsert: (group) => {
@@ -191,17 +192,6 @@ export default function CloudWatchPage() {
     return Number.isFinite(parsed) ? parsed : undefined;
   }, []);
 
-  const compiledFilterPattern = useMemo(() => {
-    const parts: string[] = [];
-    if (severityFilter !== 'ALL') {
-      parts.push(severityFilter);
-    }
-    if (messageFilter.trim()) {
-      parts.push(messageFilter.trim());
-    }
-    return parts.join(' ');
-  }, [messageFilter, severityFilter]);
-
   const runFilter = useCallback(async (silent = false) => {
     if (!effectiveGroupNames.length) {
       if (!silent) setStatus({ type: 'error', message: 'Select at least one log group first.' });
@@ -224,7 +214,7 @@ export default function CloudWatchPage() {
         effectiveGroupNames.map(async (groupName) => {
           let groupEvents: CloudWatchLogEvent[] = [];
           try {
-            groupEvents = await api.filterLogEvents(groupName, compiledFilterPattern, { startTime, endTime });
+            groupEvents = await api.filterLogEvents(groupName, '', { startTime, endTime });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             if (message.includes('ResourceNotFoundException')) {
@@ -247,7 +237,7 @@ export default function CloudWatchPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [api, compiledFilterPattern, effectiveGroupNames, fromDateTime, toDateTime, toEpochMs]);
+  }, [api, effectiveGroupNames, fromDateTime, toDateTime, toEpochMs]);
 
   const clearFilters = useCallback(() => {
     setSearch('');
@@ -488,6 +478,22 @@ export default function CloudWatchPage() {
         const requestIdMatch = message.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i);
         const levelMatch = displayMessage.match(/\b(INFO|ERROR|WARN|DEBUG|TRACE)\b/i);
         const level = (structured.severityText || levelMatch?.[1] || 'INFO').toUpperCase();
+        const payloadText = structured.parsedPayload ? JSON.stringify(structured.parsedPayload) : '';
+        const requestFieldText = Object.entries(structured.requestFields)
+          .map(([key, value]) => `${key}:${value}`)
+          .join(' ');
+        const searchableText = normalizeSearchTerm(
+          [
+            message,
+            displayMessage,
+            structured.service,
+            structured.enduserId,
+            structured.requestRaw,
+            requestFieldText,
+            requestIdMatch?.[0] || '',
+            payloadText,
+          ].join('\n')
+        );
         return {
           ...event,
           level,
@@ -499,10 +505,24 @@ export default function CloudWatchPage() {
           displayMessage,
           parsedPayload: structured.parsedPayload,
           preview: displayMessage.length > 180 ? `${displayMessage.slice(0, 180)}...` : displayMessage,
+          searchableText,
         };
       })
       .sort((a, b) => b.timestamp - a.timestamp);
   }, [events]);
+
+  const filteredEvents = useMemo(() => {
+    const severityTarget = severityFilter === 'ALL' ? '' : severityFilter;
+    return parsedEvents.filter((event) => {
+      const severityMatch =
+        !severityTarget ||
+        event.level === severityTarget ||
+        (severityTarget === 'WARN' && event.level === 'WARNING');
+      if (!severityMatch) return false;
+      if (!normalizedMessageFilter) return true;
+      return event.searchableText.includes(normalizedMessageFilter);
+    });
+  }, [normalizedMessageFilter, parsedEvents, severityFilter]);
 
   const getEventKey = useCallback((event: CloudWatchLogEvent) => {
     if (event.eventId) {
@@ -512,21 +532,21 @@ export default function CloudWatchPage() {
   }, []);
 
   useEffect(() => {
-    if (!parsedEvents.length) {
+    if (!filteredEvents.length) {
       if (selectedEventKey) setSelectedEventKey('');
       return;
     }
 
-    if (!selectedEventKey || !parsedEvents.some((event) => getEventKey(event) === selectedEventKey)) {
-      setSelectedEventKey(getEventKey(parsedEvents[0]));
+    if (!selectedEventKey || !filteredEvents.some((event) => getEventKey(event) === selectedEventKey)) {
+      setSelectedEventKey(getEventKey(filteredEvents[0]));
     }
-  }, [getEventKey, parsedEvents, selectedEventKey]);
+  }, [filteredEvents, getEventKey, selectedEventKey]);
 
   const selectedEvent = useMemo(() => {
-    if (!parsedEvents.length) return null;
-    if (!selectedEventKey) return parsedEvents[0];
-    return parsedEvents.find((event) => getEventKey(event) === selectedEventKey) || parsedEvents[0];
-  }, [getEventKey, parsedEvents, selectedEventKey]);
+    if (!filteredEvents.length) return null;
+    if (!selectedEventKey) return filteredEvents[0];
+    return filteredEvents.find((event) => getEventKey(event) === selectedEventKey) || filteredEvents[0];
+  }, [filteredEvents, getEventKey, selectedEventKey]);
 
   const handleRefresh = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -689,8 +709,8 @@ export default function CloudWatchPage() {
               </div>
             </CardHeader>
             <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
-              {!parsedEvents.length ? (
-                <p className='text-sm text-muted-foreground'>No events loaded.</p>
+              {!filteredEvents.length ? (
+                <p className='text-sm text-muted-foreground'>No events matched current filters.</p>
               ) : (
                 <div
                   ref={eventsListRef}
@@ -699,17 +719,17 @@ export default function CloudWatchPage() {
                   role='listbox'
                   aria-label='CloudWatch events'
                   onKeyDown={(event) => {
-                    if (!parsedEvents.length) return;
+                    if (!filteredEvents.length) return;
                     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
 
                     event.preventDefault();
-                    const currentIndex = parsedEvents.findIndex((item) => getEventKey(item) === selectedEventKey);
+                    const currentIndex = filteredEvents.findIndex((item) => getEventKey(item) === selectedEventKey);
                     const safeIndex = currentIndex >= 0 ? currentIndex : 0;
                     const nextIndex =
                       event.key === 'ArrowDown'
-                        ? Math.min(parsedEvents.length - 1, safeIndex + 1)
+                        ? Math.min(filteredEvents.length - 1, safeIndex + 1)
                         : Math.max(0, safeIndex - 1);
-                    const nextEvent = parsedEvents[nextIndex];
+                    const nextEvent = filteredEvents[nextIndex];
                     if (!nextEvent) return;
 
                     setSelectedEventKey(getEventKey(nextEvent));
@@ -719,7 +739,7 @@ export default function CloudWatchPage() {
                     nextButton?.focus({ preventScroll: true });
                   }}
                 >
-                  {parsedEvents.map((event, index) => {
+                  {filteredEvents.map((event, index) => {
                     const active = getEventKey(event) === selectedEventKey;
                     return (
                       <button
@@ -739,7 +759,12 @@ export default function CloudWatchPage() {
                           </div>
                           <div className='flex min-w-[128px] flex-col items-end gap-1'>
                             <span className='text-xs text-muted-foreground'>{new Date(event.timestamp).toLocaleString()}</span>
-                            <Badge variant={event.level === 'ERROR' ? 'destructive' : 'outline'}>{event.level}</Badge>
+                            <Badge
+                              variant={event.level === 'ERROR' ? 'destructive' : event.level === 'WARN' || event.level === 'WARNING' ? 'secondary' : 'outline'}
+                              className={event.level === 'WARN' || event.level === 'WARNING' ? 'bg-amber-500/20 text-amber-200 border-amber-400/40 hover:bg-amber-500/30' : ''}
+                            >
+                              {event.level}
+                            </Badge>
                           </div>
                         </div>
                       </button>
