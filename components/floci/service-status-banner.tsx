@@ -35,8 +35,8 @@ export function ServiceStatusBanner({ type, message, infoDismissMs = 2800 }: Ser
   return (
     <div
       className={cn(
-        'border-b px-4 py-2 text-sm',
-        type === 'error' ? 'border-destructive/50 bg-destructive/10 text-destructive' : 'border-primary/45 bg-primary/10 text-primary'
+        'absolute left-0 right-0 top-0 z-20 border-b px-4 py-2 text-sm',
+        type === 'error' ? 'border-destructive/60 bg-destructive text-destructive-foreground' : 'border-primary/60 bg-primary text-primary-foreground'
       )}
     >
       {message}

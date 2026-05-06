@@ -153,15 +153,17 @@ export function ServiceShell({
 
           {statusSlotContent}
 
-          <ServiceStatusBanner type={status.type} message={status.message} />
+          <section className='relative min-h-0 min-w-0 flex-1'>
+            <ServiceStatusBanner type={status.type} message={status.message} />
 
-          <section
-            className={cn(
-              'grid min-h-0 min-w-0 flex-1 gap-4 overflow-x-hidden overflow-y-auto p-4 md:p-6 xl:grid-cols-[320px_minmax(0,1fr)]',
-              contentClassName
-            )}
-          >
-            {children}
+            <section
+              className={cn(
+                'grid min-h-0 min-w-0 h-full gap-4 overflow-x-hidden overflow-y-auto p-4 md:p-6 xl:grid-cols-[320px_minmax(0,1fr)]',
+                contentClassName
+              )}
+            >
+              {children}
+            </section>
           </section>
         </section>
       </section>

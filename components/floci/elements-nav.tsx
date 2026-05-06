@@ -14,7 +14,9 @@ type ElementsNavProps = {
   activeSlug?: string;
 };
 
-const SERVICE_HELP: Record<string, string[]> = {
+type HelpItem = string | { text: string; children: string[] };
+
+const SERVICE_HELP: Record<string, HelpItem[]> = {
   sqs: [
     'Select a queue on the left to load its messages.',
     'Select messages with click; use Shift+Click for range select and Ctrl/Cmd+Click to toggle multi-select.',
@@ -29,15 +31,20 @@ const SERVICE_HELP: Record<string, string[]> = {
     'Select one or more log groups from the list.',
     'Use Shift+Click for range select and Ctrl/Cmd+Click to toggle additional groups.',
     'Set severity, message, and time filters, then run filter to load recent events.',
-    'Message filter examples from our log shape:',
-    'severity_text: "ERROR"',
-    'body: "request failed"',
-    'attributes.service: "api-gateway"',
-    'attributes.request contains method:"POST" path:"/v1/workflows"',
+    {
+      text: 'Message filter examples from our log shape:',
+      children: [
+        'ERROR (basic text match)',
+        '{ $.severity_text = "ERROR" }',
+        '{ $.body = "request failed" }',
+        '{ $.attributes.service = "api-gateway" }',
+        '"method:\\"POST\\" path:\\"/v1/workflows\\""',
+      ],
+    },
   ],
 };
 
-function getServiceHelp(slug: string): string[] {
+function getServiceHelp(slug: string): HelpItem[] {
   return (
     SERVICE_HELP[slug] ?? [
       'Open the service to view resources and details.',
@@ -93,9 +100,20 @@ export function ElementsNav({ activeSlug }: ElementsNavProps) {
             <DialogDescription>{helpElement?.description}</DialogDescription>
           </DialogHeader>
           <ul className='list-disc space-y-2 pl-5 text-sm text-muted-foreground'>
-            {helpItems.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
+            {helpItems.map((item, index) =>
+              typeof item === 'string' ? (
+                <li key={`${index}-${item}`}>{item}</li>
+              ) : (
+                <li key={`${index}-${item.text}`}>
+                  {item.text}
+                  <ul className='mt-2 list-disc space-y-1 pl-5'>
+                    {item.children.map((child) => (
+                      <li key={child}>{child}</li>
+                    ))}
+                  </ul>
+                </li>
+              )
+            )}
           </ul>
         </DialogContent>
       </Dialog>

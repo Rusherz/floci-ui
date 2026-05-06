@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2, X } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -40,9 +40,15 @@ export default function CloudWatchPage() {
   const [editRetentionError, setEditRetentionError] = useState('');
   const [updatingRetention, setUpdatingRetention] = useState(false);
   const [clearLogsOpen, setClearLogsOpen] = useState(false);
+  const [deleteGroupsOpen, setDeleteGroupsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const eventsListRef = useRef<HTMLDivElement | null>(null);
   const lastGroupAnchorRef = useRef<number | null>(null);
+  const hasInitializedGroupSelectionRef = useRef(false);
+  const effectiveGroupNames = useMemo(() => {
+    if (selectedGroups.length) return selectedGroups;
+    return groups.map((group) => group.logGroupName);
+  }, [groups, selectedGroups]);
 
   const loadGroups = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -54,8 +60,17 @@ export default function CloudWatchPage() {
       setGroups(next);
       setSelectedGroups((current) => {
         const existing = current.filter((groupName) => next.some((group) => group.logGroupName === groupName));
-        if (existing.length > 0) return existing;
-        return next[0]?.logGroupName ? [next[0].logGroupName] : [];
+        if (existing.length > 0) {
+          hasInitializedGroupSelectionRef.current = true;
+          return existing;
+        }
+
+        if (!hasInitializedGroupSelectionRef.current) {
+          hasInitializedGroupSelectionRef.current = true;
+          return next[0]?.logGroupName ? [next[0].logGroupName] : [];
+        }
+
+        return [];
       });
       if (!silent) {
         setStatus({ type: 'info', message: `Loaded ${next.length} log group(s).` });
@@ -70,14 +85,25 @@ export default function CloudWatchPage() {
   }, [api]);
 
   const loadStreams = useCallback(async () => {
-    if (!selectedGroups.length) {
+    if (!effectiveGroupNames.length) {
       setStreams([]);
       return;
     }
     try {
+      let sawMissingGroup = false;
       const allStreams = await Promise.all(
-        selectedGroups.map(async (groupName) => {
-          const groupStreams = await api.listLogStreams(groupName);
+        effectiveGroupNames.map(async (groupName) => {
+          let groupStreams: CloudWatchLogStreamSummary[] = [];
+          try {
+            groupStreams = await api.listLogStreams(groupName);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message.includes('ResourceNotFoundException')) {
+              sawMissingGroup = true;
+              return [];
+            }
+            throw error;
+          }
           return groupStreams.map((stream) => ({
             ...stream,
             logStreamName: `${groupName}:${stream.logStreamName}`,
@@ -85,10 +111,13 @@ export default function CloudWatchPage() {
         })
       );
       setStreams(allStreams.flat());
+      if (sawMissingGroup) {
+        await loadGroups({ silent: true });
+      }
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load log streams' });
     }
-  }, [api, selectedGroups]);
+  }, [api, effectiveGroupNames, loadGroups]);
 
   useEffect(() => {
     void loadGroups();
@@ -133,9 +162,14 @@ export default function CloudWatchPage() {
           }
           lastGroupAnchorRef.current = index;
         } else {
-          next.clear();
-          next.add(group.logGroupName);
-          lastGroupAnchorRef.current = index;
+          if (next.size === 1 && next.has(group.logGroupName)) {
+            next.clear();
+            lastGroupAnchorRef.current = null;
+          } else {
+            next.clear();
+            next.add(group.logGroupName);
+            lastGroupAnchorRef.current = index;
+          }
         }
         return Array.from(next);
       });
@@ -161,7 +195,7 @@ export default function CloudWatchPage() {
   }, [messageFilter, severityFilter]);
 
   const runFilter = useCallback(async (silent = false) => {
-    if (!selectedGroups.length) {
+    if (!effectiveGroupNames.length) {
       if (!silent) setStatus({ type: 'error', message: 'Select at least one log group first.' });
       return;
     }
@@ -179,8 +213,17 @@ export default function CloudWatchPage() {
     if (!silent) setLoading(true);
     try {
       const groupedEvents = await Promise.all(
-        selectedGroups.map(async (groupName) => {
-          const groupEvents = await api.filterLogEvents(groupName, compiledFilterPattern, { startTime, endTime });
+        effectiveGroupNames.map(async (groupName) => {
+          let groupEvents: CloudWatchLogEvent[] = [];
+          try {
+            groupEvents = await api.filterLogEvents(groupName, compiledFilterPattern, { startTime, endTime });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message.includes('ResourceNotFoundException')) {
+              return [];
+            }
+            throw error;
+          }
           return groupEvents.map((event) => ({
             ...event,
             eventId: event.eventId ? `${groupName}:${event.eventId}` : '',
@@ -196,15 +239,30 @@ export default function CloudWatchPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [api, compiledFilterPattern, fromDateTime, selectedGroups, toDateTime, toEpochMs]);
+  }, [api, compiledFilterPattern, effectiveGroupNames, fromDateTime, toDateTime, toEpochMs]);
+
+  const clearFilters = useCallback(() => {
+    setSearch('');
+    setMessageFilter('');
+    setSeverityFilter('ALL');
+    setFromDateTime('');
+    setToDateTime('');
+    setStatus({ type: 'info', message: 'Filters cleared.' });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedGroups([]);
+    lastGroupAnchorRef.current = null;
+    setStatus({ type: 'info', message: 'Selection cleared. Showing all groups.' });
+  }, []);
 
   useEffect(() => {
-    if (!selectedGroups.length) {
+    if (!effectiveGroupNames.length) {
       setEvents([]);
       return;
     }
     void runFilter(true);
-  }, [runFilter, selectedGroups]);
+  }, [effectiveGroupNames, runFilter]);
 
   const createGroup = useCallback(
     async (nameRaw: string) => {
@@ -235,7 +293,7 @@ export default function CloudWatchPage() {
   );
 
   const clearSelectedGroups = useCallback(async () => {
-    const groupsToClear = selectedGroups.map((group) => group.trim()).filter(Boolean);
+    const groupsToClear = effectiveGroupNames.map((group) => group.trim()).filter(Boolean);
     if (!groupsToClear.length) {
       setStatus({ type: 'error', message: 'Select at least one log group first.' });
       return;
@@ -261,7 +319,33 @@ export default function CloudWatchPage() {
       setClearLogsOpen(false);
       setLoading(false);
     }
-  }, [api, loadGroups, selectedGroups]);
+  }, [api, effectiveGroupNames, loadGroups]);
+
+  const deleteSelectedGroups = useCallback(async () => {
+    const groupsToDelete = effectiveGroupNames.map((group) => group.trim()).filter(Boolean);
+    if (!groupsToDelete.length) {
+      setStatus({ type: 'error', message: 'No log groups available to delete.' });
+      return;
+    }
+
+    setLoading(true);
+    setGroups((current) => current.filter((group) => !groupsToDelete.includes(group.logGroupName)));
+    setSelectedGroups((current) => current.filter((groupName) => !groupsToDelete.includes(groupName)));
+    setStreams([]);
+    setEvents([]);
+    setSelectedEventKey('');
+    try {
+      await Promise.all(groupsToDelete.map((group) => api.deleteLogGroup(group)));
+      await loadGroups({ silent: true });
+      setStatus({ type: 'info', message: `Deleted ${groupsToDelete.length} log group(s).` });
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to delete selected log groups' });
+      await loadGroups({ silent: true });
+    } finally {
+      setDeleteGroupsOpen(false);
+      setLoading(false);
+    }
+  }, [api, effectiveGroupNames, loadGroups]);
 
   const updateRetention = useCallback(
     async (retentionRaw: string) => {
@@ -461,18 +545,41 @@ export default function CloudWatchPage() {
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Log Groups ({filtered.length})</CardTitle>
             <div className='flex items-center gap-2'>
+              <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create log group' title='Create log group'>
+                <Plus className='size-4' />
+              </Button>
               <Button
                 variant='outline'
                 size='icon'
+                className='size-9'
                 onClick={() => setEditRetentionOpen(true)}
                 disabled={!selectedGroups.length || loading}
                 aria-label='Edit retention'
                 title='Edit retention'
               >
-                <Pencil />
+                <Pencil className='size-4' />
               </Button>
-              <Button size='icon' onClick={() => setCreateOpen(true)} aria-label='Create log group' title='Create log group'>
-                <Plus />
+              <Button
+                variant='outline'
+                size='icon'
+                className='size-9'
+                onClick={clearSelection}
+                disabled={loading || !selectedGroups.length}
+                aria-label='Clear selection'
+                title='Clear selection'
+              >
+                <X className='size-4' />
+              </Button>
+              <Button
+                variant='destructive'
+                size='icon'
+                className='size-9'
+                onClick={() => setDeleteGroupsOpen(true)}
+                disabled={loading || !effectiveGroupNames.length}
+                aria-label='Delete log groups'
+                title='Delete log groups'
+              >
+                <Trash2 className='size-4' />
               </Button>
             </div>
           </div>
@@ -543,9 +650,14 @@ export default function CloudWatchPage() {
                   <Input type='datetime-local' value={toDateTime} onChange={(event) => setToDateTime(event.target.value)} />
                 </div>
               </div>
-              <Button onClick={() => void runFilter()} disabled={loading || !selectedGroups.length}>
-                Run Filter
-              </Button>
+              <div className='flex items-center gap-2'>
+                <Button onClick={() => void runFilter()} disabled={loading || !effectiveGroupNames.length}>
+                  Run Filter
+                </Button>
+                <Button variant='outline' onClick={() => void clearFilters()} disabled={loading}>
+                  Clear Filters
+                </Button>
+              </div>
             </CardContent>
           ) : null}
         </Card>
@@ -557,10 +669,10 @@ export default function CloudWatchPage() {
                 <div>
                   <CardTitle className='text-base'>Events</CardTitle>
                   <p className='text-xs text-muted-foreground'>
-                    {streams.length} stream(s) across {selectedGroups.length} selected group(s)
+                    {streams.length} stream(s) across {effectiveGroupNames.length} selected group(s)
                   </p>
                 </div>
-                <Button variant='destructive' size='sm' onClick={() => setClearLogsOpen(true)} disabled={loading || !selectedGroups.length}>
+                <Button variant='destructive' size='sm' onClick={() => setClearLogsOpen(true)} disabled={loading || !effectiveGroupNames.length}>
                   Clear Logs
                 </Button>
               </div>
@@ -719,6 +831,21 @@ export default function CloudWatchPage() {
         onConfirm={() => void clearSelectedGroups()}
         confirmLabel='Clear Logs'
         confirmDisabled={loading || !selectedGroups.length}
+        cancelDisabled={loading}
+      />
+      <ConfirmDialog
+        open={deleteGroupsOpen}
+        onOpenChange={setDeleteGroupsOpen}
+        title='Delete CloudWatch Log Groups'
+        description={
+          <>
+            This will permanently delete <strong>{effectiveGroupNames.length} log group(s)</strong>.
+          </>
+        }
+        onCancel={() => setDeleteGroupsOpen(false)}
+        onConfirm={() => void deleteSelectedGroups()}
+        confirmLabel='Delete Log Groups'
+        confirmDisabled={loading || !effectiveGroupNames.length}
         cancelDisabled={loading}
       />
     </ServiceShell>
