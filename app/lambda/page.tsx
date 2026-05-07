@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import LambdaPage from '@/components/floci/lambda';
 import { createServicePage } from '@/lib/floci/create-service-page';
 

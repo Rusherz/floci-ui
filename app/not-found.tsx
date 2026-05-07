@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import Link from 'next/link';
 
 import { FlociSidebar } from '@/components/floci/floci-sidebar';

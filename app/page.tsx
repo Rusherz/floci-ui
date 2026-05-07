@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { HomePage } from '@/components/floci/home-page';
 import { getEnabledElements } from '@/lib/floci/elements';
 
