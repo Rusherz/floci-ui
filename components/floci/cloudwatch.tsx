@@ -849,8 +849,13 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                               {timestampLabel}
                             </span>
                             <Badge
-                              variant={event.level === 'ERROR' ? 'destructive' : event.level === 'WARN' || event.level === 'WARNING' ? 'secondary' : 'outline'}
-                              className={event.level === 'WARN' || event.level === 'WARNING' ? 'bg-amber-500/20 text-amber-200 border-amber-400/40 hover:bg-amber-500/30' : ''}
+                              variant={
+                                event.level === 'ERROR'
+                                  ? 'destructive'
+                                  : event.level === 'WARN' || event.level === 'WARNING'
+                                    ? 'warning'
+                                    : 'outline'
+                              }
                             >
                               {event.level}
                             </Badge>
