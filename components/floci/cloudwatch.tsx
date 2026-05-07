@@ -781,9 +781,9 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
             <CardHeader>
               <CardTitle className='text-base'>Event Detail</CardTitle>
             </CardHeader>
-          <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
+          <CardContent className='flex min-h-0 flex-col lg:flex-1 lg:overflow-hidden'>
               {selectedEvent && Object.keys(selectedEvent.requestFields).length ? (
-                <div className='mb-3 rounded-md border bg-background/40 p-3'>
+                <div className='mb-3 shrink-0 rounded-md border bg-background/40 p-3'>
                   <p className='mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Request Fields</p>
                   <dl className='grid gap-1'>
                     {Object.entries(selectedEvent.requestFields).map(([key, value]) => (
@@ -820,6 +820,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                     : 'Select an event.'
                 }
                 fillContainer
+                className='flex-1 min-h-0'
               />
           </CardContent>
         </Card>
