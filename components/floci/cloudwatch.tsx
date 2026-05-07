@@ -827,6 +827,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                 >
                   {filteredEvents.map((event) => {
                     const active = getEventKey(event) === selectedEventKey;
+                    const timestampLabel = new Date(event.timestamp).toLocaleString();
                     return (
                       <button
                         key={getEventKey(event)}
@@ -843,8 +844,10 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                           <div className='min-w-0 pr-2'>
                             <p className='line-clamp-2 text-sm font-medium text-foreground'>{event.preview}</p>
                           </div>
-                          <div className='flex min-w-[128px] flex-col items-end gap-1'>
-                            <span className='text-xs text-muted-foreground'>{new Date(event.timestamp).toLocaleString()}</span>
+                          <div className='flex w-40 shrink-0 flex-col items-end gap-1'>
+                            <span title={timestampLabel} className='block max-w-full truncate text-right text-xs text-muted-foreground'>
+                              {timestampLabel}
+                            </span>
                             <Badge
                               variant={event.level === 'ERROR' ? 'destructive' : event.level === 'WARN' || event.level === 'WARNING' ? 'secondary' : 'outline'}
                               className={event.level === 'WARN' || event.level === 'WARNING' ? 'bg-amber-500/20 text-amber-200 border-amber-400/40 hover:bg-amber-500/30' : ''}
