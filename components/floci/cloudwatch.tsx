@@ -230,9 +230,20 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           }));
         })
       );
-      const next = groupedEvents.flat().sort((a, b) => b.timestamp - a.timestamp).slice(0, 200);
-      setEvents(next);
-      if (!silent) setStatus({ type: 'info', message: `Loaded ${next.length} event(s).` });
+      const deduped = groupedEvents
+        .flat()
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .filter((event, index, items) => {
+          const key = event.eventId || `${event.timestamp}:${event.ingestionTime}:${event.logStreamName}:${event.message}`;
+          return items.findIndex((candidate) => {
+            const candidateKey =
+              candidate.eventId || `${candidate.timestamp}:${candidate.ingestionTime}:${candidate.logStreamName}:${candidate.message}`;
+            return candidateKey === key;
+          }) === index;
+        })
+        .slice(0, 200);
+      setEvents(deduped);
+      if (!silent) setStatus({ type: 'info', message: `Loaded ${deduped.length} event(s).` });
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to filter logs' });
     } finally {
@@ -395,6 +406,12 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
   );
 
   const parsedEvents = useMemo(() => {
+    type AttributeRow = {
+      key: string;
+      value: string;
+      depth: number;
+    };
+
     const parseRequestFields = (raw: string): Record<string, string> => {
       const trimmed = raw.trim();
       if (!trimmed) return {};
@@ -413,12 +430,13 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         }
       }
 
-      // Parse protobuf text-like payloads: key:"value" key2:"value2"
+      // Parse protobuf text-like payloads:
+      // key:"value" key2:true key3:10 key4:abc
       const fields: Record<string, string> = {};
-      const pattern = /([A-Za-z0-9_.-]+)\s*:\s*"([^"]*)"/g;
+      const pattern = /([A-Za-z0-9_.-]+)\s*:\s*(?:"([^"]*)"|([^\s]+))/g;
       let match: RegExpExecArray | null = pattern.exec(trimmed);
       while (match) {
-        fields[match[1]] = match[2];
+        fields[match[1]] = match[2] ?? match[3] ?? '';
         match = pattern.exec(trimmed);
       }
 
@@ -430,12 +448,74 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
       return { value: raw };
     };
 
+    const parseJsonString = (raw: string): unknown | null => {
+      const trimmed = raw.trim();
+      if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return null;
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return null;
+      }
+    };
+
+    const flattenAttributeRows = (input: unknown, depth = 0, parentKey = ''): AttributeRow[] => {
+      if (Array.isArray(input)) {
+        if (input.length === 1) {
+          return flattenAttributeRows(input[0], depth, parentKey);
+        }
+
+        return input.flatMap((item, index) => {
+          const nextKey = `[${index}]`;
+          if (item && typeof item === 'object') {
+            return [{ key: nextKey, value: '', depth }, ...flattenAttributeRows(item, depth + 1, '')];
+          }
+          return [{ key: nextKey, value: item === null || item === undefined ? '' : String(item), depth }];
+        });
+      }
+
+      if (input && typeof input === 'object') {
+        return Object.entries(input as Record<string, unknown>).flatMap(([key, value]) => {
+          const nextKey = key;
+
+          if (nextKey === 'request' && typeof value === 'string') {
+            const requestFields = parseRequestFields(value);
+            const parsedKeys = Object.keys(requestFields).filter((itemKey) => itemKey !== 'value');
+            if (parsedKeys.length) {
+              return [
+                { key: nextKey, value: '', depth },
+                ...parsedKeys.map((itemKey) => ({
+                  key: itemKey,
+                  value: requestFields[itemKey] ?? '',
+                  depth: depth + 1,
+                })),
+              ];
+            }
+          }
+
+          if (typeof value === 'string') {
+            const parsedJson = parseJsonString(value);
+            if (parsedJson && typeof parsedJson === 'object') {
+              return [{ key: nextKey, value: '', depth }, ...flattenAttributeRows(parsedJson, depth + 1, '')];
+            }
+          }
+
+          if (value && typeof value === 'object') {
+            return [{ key: nextKey, value: '', depth }, ...flattenAttributeRows(value, depth + 1, nextKey)];
+          }
+          return [{ key: nextKey, value: value === null || value === undefined ? '' : String(value), depth }];
+        });
+      }
+
+      return [{ key: parentKey || 'value', value: input === null || input === undefined ? '' : String(input), depth }];
+    };
+
     const tryParseStructuredMessage = (raw: string): {
       displayMessage: string;
       severityText: string;
       service: string;
       parsedPayload: Record<string, unknown> | null;
       requestFields: Record<string, string>;
+      attributeRows: AttributeRow[];
       requestRaw: string;
       enduserId: string;
     } => {
@@ -444,6 +524,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         const body = typeof parsed.body === 'string' ? parsed.body : '';
         const severityText = typeof parsed.severity_text === 'string' ? parsed.severity_text : '';
         const attributes = parsed.attributes && typeof parsed.attributes === 'object' ? (parsed.attributes as Record<string, unknown>) : {};
+        const attributeRows = flattenAttributeRows(attributes);
         const service = typeof attributes.service === 'string' ? attributes.service : '';
         const requestRaw = typeof attributes.request === 'string' ? attributes.request : '';
         const requestFields = requestRaw ? parseRequestFields(requestRaw) : {};
@@ -455,6 +536,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           service,
           parsedPayload: parsed,
           requestFields,
+          attributeRows,
           requestRaw,
           enduserId,
         };
@@ -465,6 +547,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           service: '',
           parsedPayload: null,
           requestFields: {},
+          attributeRows: [],
           requestRaw: '',
           enduserId: '',
         };
@@ -503,6 +586,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           enduserId: structured.enduserId,
           requestRaw: structured.requestRaw,
           requestFields: structured.requestFields,
+          attributeRows: structured.attributeRows,
           displayMessage,
           parsedPayload: structured.parsedPayload,
           preview: displayMessage.length > 180 ? `${displayMessage.slice(0, 180)}...` : displayMessage,
@@ -741,11 +825,11 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                     nextButton?.focus({ preventScroll: true });
                   }}
                 >
-                  {filteredEvents.map((event, index) => {
+                  {filteredEvents.map((event) => {
                     const active = getEventKey(event) === selectedEventKey;
                     return (
                       <button
-                        key={event.eventId || `${event.timestamp}-${event.ingestionTime}-${index}`}
+                        key={getEventKey(event)}
                         data-event-key={getEventKey(event)}
                         type='button'
                         onClick={() => setSelectedEventKey(getEventKey(event))}
@@ -782,14 +866,14 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
               <CardTitle className='text-base'>Event Detail</CardTitle>
             </CardHeader>
           <CardContent className='flex min-h-0 flex-col lg:flex-1 lg:overflow-hidden'>
-              {selectedEvent && Object.keys(selectedEvent.requestFields).length ? (
+              {selectedEvent && selectedEvent.attributeRows?.length ? (
                 <div className='mb-3 shrink-0 rounded-md border bg-background/40 p-3'>
-                  <p className='mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Request Fields</p>
+                  <p className='mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Attributes</p>
                   <dl className='grid gap-1'>
-                    {Object.entries(selectedEvent.requestFields).map(([key, value]) => (
-                      <div key={`${selectedEvent.eventId}-${key}`} className='grid grid-cols-[140px_minmax(0,1fr)] gap-2 text-xs'>
-                        <dt className='truncate text-muted-foreground'>{key}</dt>
-                        <dd className='truncate font-medium text-foreground'>{value}</dd>
+                    {selectedEvent.attributeRows.map((entry, index) => (
+                      <div key={`${selectedEvent.eventId}-${entry.key}-${index}`} className='grid grid-cols-[180px_minmax(0,1fr)] gap-2 text-xs'>
+                        <dt className='truncate text-muted-foreground' style={{ paddingLeft: `${entry.depth * 10}px` }}>{entry.key}</dt>
+                        <dd className='whitespace-pre-wrap break-all font-medium text-foreground'>{entry.value}</dd>
                       </div>
                     ))}
                   </dl>
