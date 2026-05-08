@@ -8,13 +8,15 @@ patch-version-bump-message: "^(fix)(\\([\\w\\s]*\\))?:"
 
 branches:
   main:
-    mode: ContinuousDelivery
+    mode: ContinuousDeployment
     regex: ^main$
+    is-main-branch: true
+    label: ''
     increment: Patch
 
-  develop:
+  dev:
     mode: ContinuousDelivery
-    regex: ^dev(elop(ment)?)?$|^origin\/dev(elop(ment)?)?$|^develop$|^origin\/develop$|^nottested$|^origin\/nottested$
+    regex: ^dev(elop(ment)?)?$|^origin\/dev(elop(ment)?)?$
     label: 'alpha'
     increment: Minor
     tracks-release-branches: true
