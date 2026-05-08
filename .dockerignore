@@ -3,3 +3,8 @@
 node_modules
 npm-debug.log*
 .DS_Store
+.next
+.tmp
+artifacts
+playwright-report
+test-results

@@ -1,25 +1,38 @@
 # Floci UI
 
-Next.js + shadcn UI for exploring Floci resources across SQS, S3, SNS, DynamoDB, Lambda, EventBridge, Step Functions, SSM, Secrets Manager, and CloudWatch Logs.
+Floci UI is a Next.js control plane for local AWS-style environments powered by Floci. It gives you one place to browse resources, create new ones, and run common operational workflows across services.
 
-## Stack
+## Capabilities
 
-- Next.js (App Router)
-- TypeScript
-- Tailwind CSS
-- shadcn/ui components
-- Route-handler proxy for Floci (`/floci/*`)
+- Service coverage:
+  - SQS
+  - S3
+  - SNS
+  - DynamoDB
+  - Lambda
+  - EventBridge
+  - Step Functions
+  - SSM Parameter Store
+  - Secrets Manager
+  - CloudWatch Logs
+- Unified service shell with search, refresh, and optional polling controls.
+- Resource creation workflows across all listed services.
+- Friendly create-error mapping for common API failures.
+- Lambda invoke flow with payload, response, and logs.
+- Lambda source loading support from local Floci data mounts.
+- Route-handler proxy for Floci via `/floci/*`.
+- Service-level feature flags via `FLOCI_ENABLED_SERVICES`.
 
-## Local Development
+## Quick Start
 
-1. Ensure Floci is running (default `http://localhost:4566`).
+1. Ensure Floci is running (default: `http://localhost:4566`).
 2. Install dependencies:
 
 ```bash
 npm install
 ```
 
-3. Start dev server:
+3. Start the app:
 
 ```bash
 npm run dev
@@ -27,71 +40,115 @@ npm run dev
 
 4. Open `http://localhost:4173`.
 
-## Runtime Configuration
+## Configuration
 
-- `FLOCI_ORIGIN` (server env): proxy upstream target for `/floci` (default `http://localhost:4566`)
-- `PORT` (server env): runtime port for `next start` / Docker (default `4173`)
-- `NEXT_PUBLIC_FLOCI_SQS_ACCOUNT_ID` (client env): SQS account ID fallback (default `000000000000`)
-- `NEXT_PUBLIC_FLOCI_SQS_POLL_MS` (client env): SQS poll interval in ms (default `5000`)
-- `FLOCI_ENABLED_SERVICES` (server env): comma-separated enabled service slugs, or `*` for all. Disabled services are hidden and return `404`.
+| Variable | Scope | Default | Purpose |
+| --- | --- | --- | --- |
+| `FLOCI_ORIGIN` | Server | `http://localhost:4566` | Upstream target for `/floci/*` proxy and health reporting. |
+| `FLOCI_ENABLED_SERVICES` | Server | `*` | Comma-separated service slugs to expose. Disabled services are hidden and return `404`. |
+| `NEXT_PUBLIC_FLOCI_SQS_ACCOUNT_ID` | Client | `000000000000` | Account id fallback for SQS queue URL operations. |
+| `NEXT_PUBLIC_FLOCI_SQS_POLL_MS` | Client | `5000` | Default SQS polling interval in milliseconds. |
+| `FLOCI_LOCAL_DATA_PATH` | Server | unset | Optional base path for Lambda local source files (used by `/api/lambda-source/[name]`). |
 
 ## Endpoints
 
-- `GET /healthz` returns `{ ok: true, flociOrigin }`
-- `/floci/*` proxies to `FLOCI_ORIGIN`
+- `GET /healthz` returns:
 
-## App Routes
-
-- `/` service overview + element navigation
-- `/sqs` SQS service page
-- `/s3` S3 service page
-- `/sns` SNS service page
-- `/dynamodb` DynamoDB service page
-- `/lambda` Lambda service page
-- `/eventbridge` EventBridge service page
-- `/step-functions` Step Functions service page
-- `/ssm` SSM Parameter Store service page
-- `/secrets-manager` Secrets Manager service page
-- `/cloudwatch` CloudWatch Logs service page
-
-## Create Workflows
-
-Create actions are available across S3, SQS, SNS, DynamoDB, Lambda, EventBridge, Step Functions, SSM, Secrets Manager, and CloudWatch Logs.
-
-- Create operations refresh lists after success and attempt to auto-select the new resource.
-- Validation is enforced in UI for common name/format rules, then re-validated by Floci/AWS APIs.
-- Error messages include friendlier mapping for common failures (already exists, invalid input, access denied, throttling).
-
-### Caveats
-
-- Some services intentionally expose a simplified create form first (for example, no full advanced-option coverage).
-- Lambda creation supports both inline template code and ZIP payload upload in the dialog.
-
-### Create Outcome Copy Guidelines
-
-- Start: use direct progress copy such as `Creating <resource>...`
-- Success: use completed action copy such as `Created <resource>.`
-- Error: use action-specific failure copy such as `Failed to create <resource>.` and append mapped AWS/Floci detail
-
-## Build
-
-```bash
-npm run build
-npm run start
+```json
+{ "ok": true, "flociOrigin": "http://localhost:4566" }
 ```
 
-## End-to-End Tests (Playwright)
+- `/floci/*` proxies HTTP methods to `FLOCI_ORIGIN`.
 
-Playwright is configured for create-workflow coverage under `tests/e2e`.
+## Routes
 
-1. Install browser binaries:
+- `/`
+- `/sqs`
+- `/s3`
+- `/sns`
+- `/dynamodb`
+- `/lambda`
+- `/eventbridge`
+- `/step-functions`
+- `/ssm`
+- `/secrets-manager`
+- `/cloudwatch`
+
+## Usage Examples
+
+### 1) Run only selected services
+
+```bash
+FLOCI_ENABLED_SERVICES=sqs,s3,cloudwatch npm run dev
+```
+
+### 2) Validate upstream connectivity
+
+```bash
+curl -s http://localhost:4173/healthz
+```
+
+Expected shape:
+
+```json
+{ "ok": true, "flociOrigin": "http://localhost:4566" }
+```
+
+### 3) SQS create flow
+
+1. Open `/sqs`.
+2. Click the create queue button.
+3. Enter a queue name.
+4. Confirm create and verify the queue appears in the left list.
+
+### 4) Lambda invoke flow
+
+1. Open `/lambda`.
+2. Select a function.
+3. Provide JSON payload.
+4. Run invoke and review result + logs in the output panel.
+
+## Screenshots
+
+All screenshots below were captured with Playwright against `http://localhost:4173` with sensitive UI elements redacted during capture.
+
+## Demo Video
+
+Latest Playwright demo capture (1920x1080, captioned, compressed):
+
+- [Demo Video (MP4)](public/readme/demo.mp4)
+
+### Overview
+
+![Overview](public/readme/overview.png)
+
+### SQS
+
+![SQS](public/readme/sqs.png)
+
+### Lambda
+
+![Lambda](public/readme/lambda.png)
+
+### Create Dialog
+
+![Create Dialog](public/readme/create-dialog.png)
+
+### CloudWatch Logs
+
+![CloudWatch Logs](public/readme/cloudwatch.png)
+
+## Testing
+
+Playwright end-to-end coverage is under `tests/e2e/create-workflows.spec.ts`.
+
+Install browsers:
 
 ```bash
 npx playwright install
 ```
 
-2. Ensure Floci is running (default `http://localhost:4566`).
-3. Run the suite:
+Run e2e (gated):
 
 ```bash
 RUN_FLOCI_E2E=1 npm run test:e2e
@@ -99,13 +156,14 @@ RUN_FLOCI_E2E=1 npm run test:e2e
 
 Notes:
 - Tests are intentionally gated behind `RUN_FLOCI_E2E=1`.
-- The suite starts the Next.js app automatically using Playwright `webServer`.
-- Override base URL if needed with `PLAYWRIGHT_BASE_URL`.
+- Playwright starts the Next.js app via `webServer` unless you override base URL.
+- Optional override: `PLAYWRIGHT_BASE_URL`.
 
-Precheck workflow:
+## Build and Run
 
 ```bash
-npm run precheck
+npm run build
+npm run start
 ```
 
 ## Docker
@@ -114,15 +172,6 @@ Build:
 
 ```bash
 docker build -t floci-ui:local .
-```
-
-Build multi-arch (push to registry):
-
-```bash
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/rusherz/floci-ui:latest \
-  --push .
 ```
 
 Run:

@@ -4,6 +4,7 @@ out/
 *.tsbuildinfo
 playwright-report/
 test-results/
+.tmp/
 
 .DS_Store
 
