@@ -260,7 +260,7 @@ test.describe('Create workflows', () => {
     }
   });
 
-  test('S3 create bucket', async ({ page }) => {
+  test('S3 create bucket + delete folder/object/bucket', async ({ page, request }) => {
     const created = createTracker();
     createdByTestId.set(test.info().testId, created);
     const bucket = uniqueName('pw-bucket');
@@ -268,6 +268,33 @@ test.describe('Create workflows', () => {
     await page.goto('/s3');
     await createFromDialog(page, 'Create Bucket', bucket, 'Create Bucket', 'my-bucket');
     await expectListContainsName(page, bucket);
+    await page.getByRole('button', { name: bucket }).first().click();
+
+    const folderPrefix = 'playwright-folder/';
+    const folderKey = `${folderPrefix}.keep`;
+    const objectKey = `${folderPrefix}playwright-file.txt`;
+    await request.put(`/floci/${bucket}/${folderKey}`, { data: 'folder marker' });
+    await request.put(`/floci/${bucket}/${objectKey}`, { data: 'playwright object body' });
+
+    await page.getByRole('button', { name: /refresh/i }).click();
+    const folderButton = page.getByRole('button', { name: 'playwright-folder' }).first();
+    await expect(folderButton).toBeVisible();
+    await folderButton.click();
+    await expect(page.getByLabel('Delete object playwright-file.txt')).toBeVisible();
+    await page.getByLabel('Delete object playwright-file.txt').click();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByLabel('Delete object playwright-file.txt')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Up' }).click();
+    await expect(page.getByLabel('Delete folder playwright-folder')).toBeVisible();
+    await page.getByLabel('Delete folder playwright-folder').click();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByLabel('Delete folder playwright-folder')).toHaveCount(0);
+
+    await page.getByRole('button', { name: `Delete bucket ${bucket}` }).click();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByRole('button', { name: new RegExp(bucket.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })).toHaveCount(0);
+    created.buckets = created.buckets.filter((name) => name !== bucket);
   });
 
   test('SQS create queue + receive/send/delete', async ({ page, request }) => {
@@ -470,5 +497,10 @@ test.describe('Create workflows', () => {
     await page.getByRole('button', { name: 'Expand' }).click();
     await page.getByRole('button', { name: 'Run Filter' }).click();
     await expect(page.getByText(/Loaded .* event\(s\)/i)).toBeVisible();
+
+    await page.getByRole('button', { name: 'Delete log groups' }).click();
+    await page.getByRole('button', { name: 'Delete Log Groups' }).click();
+    await expect(page.getByRole('button', { name: new RegExp(group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })).toHaveCount(0);
+    created.logGroups = created.logGroups.filter((name) => name !== group);
   });
 });
