@@ -92,6 +92,8 @@ jobs:
       version_image: ${{ steps.image_refs.outputs.version_image }}
       latest_image: ${{ steps.image_refs.outputs.latest_image }}
       latest_rc_image: ${{ steps.image_refs.outputs.latest_rc_image }}
+      main_manifest_url: ${{ steps.manifest_urls.outputs.main_manifest_url }}
+      dev_manifest_url: ${{ steps.manifest_urls.outputs.dev_manifest_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -137,6 +139,19 @@ jobs:
           echo "latest_image=$LATEST_IMAGE" >> "$GITHUB_OUTPUT"
           echo "latest_rc_image=$LATEST_RC_IMAGE" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve manifest URLs
+        id: manifest_urls
+        shell: bash
+        run: |
+          BASE_URL='${{ vars.PAGES_BASE_URL }}'
+          BASE_URL="${BASE_URL%/}"
+          if [[ -z "$BASE_URL" ]]; then
+            echo "PAGES_BASE_URL is required" >&2
+            exit 1
+          fi
+          echo "main_manifest_url=$BASE_URL/version.json" >> "$GITHUB_OUTPUT"
+          echo "dev_manifest_url=$BASE_URL/dev/version.json" >> "$GITHUB_OUTPUT"
+
       - name: Publish resolved image refs
         shell: bash
         run: |
@@ -147,6 +162,8 @@ jobs:
             echo "- Version image: \`${{ steps.image_refs.outputs.version_image }}\`"
             echo "- Latest image: \`${{ steps.image_refs.outputs.latest_image }}\`"
             echo "- Latest RC image: \`${{ steps.image_refs.outputs.latest_rc_image }}\`"
+            echo "- Main manifest URL: \`${{ steps.manifest_urls.outputs.main_manifest_url }}\`"
+            echo "- Dev manifest URL: \`${{ steps.manifest_urls.outputs.dev_manifest_url }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build_and_push_amd64_image:
@@ -192,7 +209,7 @@ jobs:
           tags: ${{ steps.arch_ref.outputs.arch_image }}
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
-            VERSION_MANIFEST_URL=${{ github.ref == 'refs/heads/main' && vars.PAGES_VERSION_MANIFEST_URL || vars.PAGES_VERSION_MANIFEST_DEV_URL }}
+            VERSION_MANIFEST_URL=${{ github.ref == 'refs/heads/main' && needs.resolve_image_version.outputs.main_manifest_url || needs.resolve_image_version.outputs.dev_manifest_url }}
           cache-from: type=local,src=/tmp/.buildx-cache-amd64
           cache-to: type=local,dest=/tmp/.buildx-cache-amd64-new,mode=max
 
@@ -255,7 +272,7 @@ jobs:
           tags: ${{ steps.arch_ref.outputs.arch_image }}
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
-            VERSION_MANIFEST_URL=${{ github.ref == 'refs/heads/main' && vars.PAGES_VERSION_MANIFEST_URL || vars.PAGES_VERSION_MANIFEST_DEV_URL }}
+            VERSION_MANIFEST_URL=${{ github.ref == 'refs/heads/main' && needs.resolve_image_version.outputs.main_manifest_url || needs.resolve_image_version.outputs.dev_manifest_url }}
           cache-from: type=local,src=/tmp/.buildx-cache-arm64
           cache-to: type=local,dest=/tmp/.buildx-cache-arm64-new,mode=max
 
@@ -340,7 +357,7 @@ jobs:
         run: |
           {
             echo "## Published GitHub Pages version file"
-            echo "- URL: \`${{ steps.pages_deploy.outputs.page_url }}version.json\`"
+            echo "- URL: \`${{ needs.resolve_image_version.outputs.main_manifest_url }}\`"
             echo "- Version tag: \`${{ needs.resolve_image_version.outputs.version_tag }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
