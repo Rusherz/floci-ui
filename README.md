@@ -48,6 +48,8 @@ npm run dev
 | `FLOCI_ENABLED_SERVICES` | Server | `*` | Comma-separated service slugs to expose. Disabled services are hidden and return `404`. |
 | `NEXT_PUBLIC_FLOCI_SQS_ACCOUNT_ID` | Client | `000000000000` | Account id fallback for SQS queue URL operations. |
 | `NEXT_PUBLIC_FLOCI_SQS_POLL_MS` | Client | `5000` | Default SQS polling interval in milliseconds. |
+| `NEXT_PUBLIC_APP_VERSION` | Client | `dev` | Current app build version used by the update check banner. |
+| `VERSION_MANIFEST_URL` | Server | `/version.json` | URL to the deployed version manifest (for example GitHub Pages `version.json`). |
 | `FLOCI_LOCAL_DATA_PATH` | Server | unset | Optional base path for Lambda local source files (used by `/api/lambda-source/[name]`). |
 
 ## Endpoints

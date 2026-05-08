@@ -185,6 +185,9 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ steps.arch_ref.outputs.arch_image }}
+          build-args: |
+            NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
+            VERSION_MANIFEST_URL=${{ vars.PAGES_VERSION_MANIFEST_URL }}
           cache-from: type=local,src=/tmp/.buildx-cache-amd64
           cache-to: type=local,dest=/tmp/.buildx-cache-amd64-new,mode=max
 
@@ -245,6 +248,9 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: ${{ steps.arch_ref.outputs.arch_image }}
+          build-args: |
+            NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
+            VERSION_MANIFEST_URL=${{ vars.PAGES_VERSION_MANIFEST_URL }}
           cache-from: type=local,src=/tmp/.buildx-cache-arm64
           cache-to: type=local,dest=/tmp/.buildx-cache-arm64-new,mode=max
 
@@ -287,6 +293,50 @@ jobs:
       - name: Verify version image manifest
         shell: bash
         run: docker buildx imagetools inspect "${{ needs.resolve_image_version.outputs.version_image }}"
+
+  publish_pages_version:
+    name: Publish Pages version.json
+    runs-on: [self-hosted, linux]
+    needs: [resolve_image_version, publish_version_manifest]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Create Pages artifact
+        shell: bash
+        run: |
+          mkdir -p pages
+          BUILT_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          cat > pages/version.json <<EOF
+          {
+            "version": "${{ needs.resolve_image_version.outputs.version_tag }}",
+            "versionImage": "${{ needs.resolve_image_version.outputs.version_image }}",
+            "latestImage": "${{ needs.resolve_image_version.outputs.latest_image }}",
+            "commit": "${{ github.sha }}",
+            "builtAt": "$BUILT_AT",
+            "ref": "${{ github.ref }}"
+          }
+          EOF
+          touch pages/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - name: Deploy to GitHub Pages
+        id: pages_deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Publish Pages summary
+        shell: bash
+        run: |
+          {
+            echo "## Published GitHub Pages version file"
+            echo "- URL: \`${{ steps.pages_deploy.outputs.page_url }}version.json\`"
+            echo "- Version tag: \`${{ needs.resolve_image_version.outputs.version_tag }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   promote_latest:
     name: Promote latest
