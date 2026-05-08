@@ -91,6 +91,7 @@ jobs:
       version_tag: ${{ steps.image_refs.outputs.version_tag }}
       version_image: ${{ steps.image_refs.outputs.version_image }}
       latest_image: ${{ steps.image_refs.outputs.latest_image }}
+      latest_rc_image: ${{ steps.image_refs.outputs.latest_rc_image }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -129,10 +130,12 @@ jobs:
           VERSION_TAG='${{ steps.version.outputs.semver_safe }}'
           VERSION_IMAGE="$IMAGE:$VERSION_TAG"
           LATEST_IMAGE="$IMAGE:latest"
+          LATEST_RC_IMAGE="$IMAGE:latest-rc"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
           echo "version_image=$VERSION_IMAGE" >> "$GITHUB_OUTPUT"
           echo "latest_image=$LATEST_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "latest_rc_image=$LATEST_RC_IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Publish resolved image refs
         shell: bash
@@ -143,6 +146,7 @@ jobs:
             echo "- Version tag: \`${{ steps.image_refs.outputs.version_tag }}\`"
             echo "- Version image: \`${{ steps.image_refs.outputs.version_image }}\`"
             echo "- Latest image: \`${{ steps.image_refs.outputs.latest_image }}\`"
+            echo "- Latest RC image: \`${{ steps.image_refs.outputs.latest_rc_image }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build_and_push_amd64_image:
@@ -188,7 +192,7 @@ jobs:
           tags: ${{ steps.arch_ref.outputs.arch_image }}
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
-            VERSION_MANIFEST_URL=${{ vars.PAGES_VERSION_MANIFEST_URL }}
+            VERSION_MANIFEST_URL=${{ github.ref == 'refs/heads/main' && vars.PAGES_VERSION_MANIFEST_URL || vars.PAGES_VERSION_MANIFEST_DEV_URL }}
           cache-from: type=local,src=/tmp/.buildx-cache-amd64
           cache-to: type=local,dest=/tmp/.buildx-cache-amd64-new,mode=max
 
@@ -251,7 +255,7 @@ jobs:
           tags: ${{ steps.arch_ref.outputs.arch_image }}
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
-            VERSION_MANIFEST_URL=${{ vars.PAGES_VERSION_MANIFEST_URL }}
+            VERSION_MANIFEST_URL=${{ github.ref == 'refs/heads/main' && vars.PAGES_VERSION_MANIFEST_URL || vars.PAGES_VERSION_MANIFEST_DEV_URL }}
           cache-from: type=local,src=/tmp/.buildx-cache-arm64
           cache-to: type=local,dest=/tmp/.buildx-cache-arm64-new,mode=max
 
@@ -299,6 +303,7 @@ jobs:
     name: Publish Pages version.json
     runs-on: [self-hosted, linux]
     needs: [resolve_image_version, publish_version_manifest]
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       pages: write
@@ -363,10 +368,34 @@ jobs:
         shell: bash
         run: docker buildx imagetools inspect "${{ needs.resolve_image_version.outputs.latest_image }}"
 
+  promote_latest_rc:
+    name: Promote latest-rc
+    runs-on: [self-hosted, linux]
+    needs: [resolve_image_version, publish_version_manifest]
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Promote version image to latest-rc
+        shell: bash
+        run: docker buildx imagetools create -t "${{ needs.resolve_image_version.outputs.latest_rc_image }}" "${{ needs.resolve_image_version.outputs.version_image }}"
+
+      - name: Verify latest-rc image manifest
+        shell: bash
+        run: docker buildx imagetools inspect "${{ needs.resolve_image_version.outputs.latest_rc_image }}"
+
   publish_summary:
     name: Publish summary
     runs-on: [self-hosted, linux]
-    needs: [resolve_image_version, build_and_push_amd64_image, build_and_push_arm64_image, publish_version_manifest, promote_latest]
+    needs: [resolve_image_version, build_and_push_amd64_image, build_and_push_arm64_image, publish_version_manifest, promote_latest, promote_latest_rc]
     if: always() && needs.resolve_image_version.result == 'success' && needs.publish_version_manifest.result == 'success'
     steps:
       - name: Publish image summary
@@ -380,8 +409,13 @@ jobs:
             echo "  - \`${{ needs.build_and_push_arm64_image.outputs.arch_image }}\`"
             if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
               echo "- Latest image: \`${{ needs.resolve_image_version.outputs.latest_image }}\`"
+              echo "- Latest RC image: not promoted (main build)"
+            elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+              echo "- Latest image: not promoted (dev build)"
+              echo "- Latest RC image: \`${{ needs.resolve_image_version.outputs.latest_rc_image }}\`"
             else
               echo "- Latest image: not promoted (ref: \`${{ github.ref }}\`)"
+              echo "- Latest RC image: not promoted (ref: \`${{ github.ref }}\`)"
             fi
             echo "- Platforms: \`linux/amd64, linux/arm64\`"
           } >> "$GITHUB_STEP_SUMMARY"
