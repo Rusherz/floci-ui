@@ -1,6 +1,5 @@
 workflow: GitFlow/v1
 mode: ContinuousDelivery
-next-version: 0.2.0
 commit-message-incrementing: Enabled
 
 major-version-bump-message: "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\\([\\w\\s]*\\))?(!:|:.*\\n\\n((.+\\n)+\\n)?BREAKING CHANGE:\\s.+)"
