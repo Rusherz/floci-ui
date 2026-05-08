@@ -321,7 +321,7 @@ jobs:
     name: Publish Pages version.json
     runs-on: [self-hosted, linux]
     needs: [resolve_image_version, publish_version_manifest]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
     permissions:
       contents: read
       pages: write
@@ -332,16 +332,60 @@ jobs:
         run: |
           mkdir -p pages
           BUILT_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          cat > pages/version.json <<EOF
+          BASE_URL='${{ vars.PAGES_BASE_URL }}'
+          BASE_URL="${BASE_URL%/}"
+          MAIN_URL="$BASE_URL/version.json"
+          DEV_URL="$BASE_URL/dev/version.json"
+
+          mkdir -p pages/dev
+
+          write_manifest() {
+            local path="$1"
+            cat > "$path" <<EOF
           {
             "version": "${{ needs.resolve_image_version.outputs.version_tag }}",
             "versionImage": "${{ needs.resolve_image_version.outputs.version_image }}",
             "latestImage": "${{ needs.resolve_image_version.outputs.latest_image }}",
+            "latestRcImage": "${{ needs.resolve_image_version.outputs.latest_rc_image }}",
             "commit": "${{ github.sha }}",
             "builtAt": "$BUILT_AT",
             "ref": "${{ github.ref }}"
           }
           EOF
+          }
+
+          fetch_existing_json() {
+            local url="$1"
+            local path="$2"
+            local tmp
+            tmp="$(mktemp)"
+            if curl -fsS "$url" -o "$tmp"; then
+              if node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$tmp" >/dev/null 2>&1; then
+                mv "$tmp" "$path"
+                return 0
+              fi
+            fi
+            rm -f "$tmp"
+            return 1
+          }
+
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            write_manifest "pages/version.json"
+            fetch_existing_json "$DEV_URL" "pages/dev/version.json" || cat > pages/dev/version.json <<EOF
+          {
+            "version": null,
+            "unavailable": true
+          }
+          EOF
+          else
+            write_manifest "pages/dev/version.json"
+            fetch_existing_json "$MAIN_URL" "pages/version.json" || cat > pages/version.json <<EOF
+          {
+            "version": null,
+            "unavailable": true
+          }
+          EOF
+          fi
           touch pages/.nojekyll
 
       - name: Upload Pages artifact
@@ -357,16 +401,18 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Published GitHub Pages version file"
-            echo "- URL: \`${{ needs.resolve_image_version.outputs.manifest_url }}\`"
+            echo "## Published GitHub Pages version files"
+            echo "- Main URL: \`${{ vars.PAGES_BASE_URL }}/version.json\`"
+            echo "- Dev URL: \`${{ vars.PAGES_BASE_URL }}/dev/version.json\`"
+            echo "- Updated URL: \`${{ needs.resolve_image_version.outputs.manifest_url }}\`"
             echo "- Version tag: \`${{ needs.resolve_image_version.outputs.version_tag }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  promote_latest:
-    name: Promote latest
+  promote_channel:
+    name: Promote channel tag
     runs-on: [self-hosted, linux]
     needs: [resolve_image_version, publish_version_manifest]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -378,42 +424,31 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Promote version image to latest
+      - name: Promote version image to release channel
         shell: bash
-        run: docker buildx imagetools create -t "${{ needs.resolve_image_version.outputs.latest_image }}" "${{ needs.resolve_image_version.outputs.version_image }}"
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            TARGET="${{ needs.resolve_image_version.outputs.latest_image }}"
+          else
+            TARGET="${{ needs.resolve_image_version.outputs.latest_rc_image }}"
+          fi
+          docker buildx imagetools create -t "$TARGET" "${{ needs.resolve_image_version.outputs.version_image }}"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 
-      - name: Verify latest image manifest
+      - name: Verify promoted image manifest
         shell: bash
-        run: docker buildx imagetools inspect "${{ needs.resolve_image_version.outputs.latest_image }}"
-
-  promote_latest_rc:
-    name: Promote latest-rc
-    runs-on: [self-hosted, linux]
-    needs: [resolve_image_version, publish_version_manifest]
-    if: github.ref == 'refs/heads/dev'
-    steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Promote version image to latest-rc
-        shell: bash
-        run: docker buildx imagetools create -t "${{ needs.resolve_image_version.outputs.latest_rc_image }}" "${{ needs.resolve_image_version.outputs.version_image }}"
-
-      - name: Verify latest-rc image manifest
-        shell: bash
-        run: docker buildx imagetools inspect "${{ needs.resolve_image_version.outputs.latest_rc_image }}"
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            TARGET="${{ needs.resolve_image_version.outputs.latest_image }}"
+          else
+            TARGET="${{ needs.resolve_image_version.outputs.latest_rc_image }}"
+          fi
+          docker buildx imagetools inspect "$TARGET"
 
   publish_summary:
     name: Publish summary
     runs-on: [self-hosted, linux]
-    needs: [resolve_image_version, build_and_push_amd64_image, build_and_push_arm64_image, publish_version_manifest, promote_latest, promote_latest_rc]
+    needs: [resolve_image_version, build_and_push_amd64_image, build_and_push_arm64_image, publish_version_manifest, promote_channel]
     if: always() && needs.resolve_image_version.result == 'success' && needs.publish_version_manifest.result == 'success'
     steps:
       - name: Publish image summary
