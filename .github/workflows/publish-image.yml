@@ -162,8 +162,11 @@ jobs:
             echo "- Image: \`${{ steps.image_refs.outputs.image }}\`"
             echo "- Version tag: \`${{ steps.image_refs.outputs.version_tag }}\`"
             echo "- Version image: \`${{ steps.image_refs.outputs.version_image }}\`"
-            echo "- Latest image: \`${{ steps.image_refs.outputs.latest_image }}\`"
-            echo "- Latest RC image: \`${{ steps.image_refs.outputs.latest_rc_image }}\`"
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              echo "- Latest image: \`${{ steps.image_refs.outputs.latest_image }}\`"
+            else
+              echo "- Latest RC image: \`${{ steps.image_refs.outputs.latest_rc_image }}\`"
+            fi
             echo "- Manifest URL: \`${{ steps.manifest_url.outputs.manifest_url }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -341,17 +344,29 @@ jobs:
 
           write_manifest() {
             local path="$1"
-            cat > "$path" <<EOF
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              cat > "$path" <<EOF
           {
             "version": "${{ needs.resolve_image_version.outputs.version_tag }}",
             "versionImage": "${{ needs.resolve_image_version.outputs.version_image }}",
             "latestImage": "${{ needs.resolve_image_version.outputs.latest_image }}",
+            "commit": "${{ github.sha }}",
+            "builtAt": "$BUILT_AT",
+            "ref": "${{ github.ref }}"
+          }
+          EOF
+            else
+              cat > "$path" <<EOF
+          {
+            "version": "${{ needs.resolve_image_version.outputs.version_tag }}",
+            "versionImage": "${{ needs.resolve_image_version.outputs.version_image }}",
             "latestRcImage": "${{ needs.resolve_image_version.outputs.latest_rc_image }}",
             "commit": "${{ github.sha }}",
             "builtAt": "$BUILT_AT",
             "ref": "${{ github.ref }}"
           }
           EOF
+            fi
           }
 
           fetch_existing_json() {
