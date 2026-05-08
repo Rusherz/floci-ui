@@ -180,10 +180,10 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
                     key={sm.arn}
                     type='button'
                     onClick={() => setSelectedArn(sm.arn)}
-                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-accent')}
+                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
                   >
                     <div className='truncate font-medium'>{sm.name}</div>
-                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{sm.type || 'STANDARD'}</p>
+                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{sm.type || 'STANDARD'}</p>
                   </button>
                 );
               })}

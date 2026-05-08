@@ -236,10 +236,10 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
                     key={rule.arn || rule.name}
                     type='button'
                     onClick={() => setSelectedRule(rule.name)}
-                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-accent')}
+                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
                   >
                     <div className='truncate font-medium'>{rule.name}</div>
-                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{rule.state}</p>
+                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{rule.state}</p>
                   </button>
                 );
               })}

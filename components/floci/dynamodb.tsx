@@ -212,7 +212,7 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
                           key={table.name}
                           type='button'
                           onClick={() => setSelectedTable(table.name)}
-                          className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-accent')}
+                          className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
                         >
                           {table.name}
                         </button>

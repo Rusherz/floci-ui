@@ -904,13 +904,13 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
                     key={bucket.name}
                     className={cn(
                       'w-full rounded-md border px-3 py-2 text-sm transition',
-                      active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-accent'
+                      active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent'
                     )}
                   >
                     <div className='flex items-start gap-2'>
                       <button type='button' onClick={() => void handleSelectBucket(index)} className='min-w-0 flex-1 text-left'>
                         <div>{bucket.name}</div>
-                        <p className={cn('mt-1 text-xs', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{bucket.region}</p>
+                        <p className={cn('mt-1 text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{bucket.region}</p>
                       </button>
                       <Button
                         type='button'
@@ -1001,7 +1001,7 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
                       tabIndex={0}
                       className={cn(
                         'cursor-pointer select-none rounded-md border p-2 text-sm transition focus:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
-                        active ? 'border-primary bg-accent text-accent-foreground' : 'border-border bg-background hover:bg-accent'
+                        active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent'
                       )}
                       onClick={(event) => handleSelectFile(file.key, event)}
                       onKeyDown={(event) => {

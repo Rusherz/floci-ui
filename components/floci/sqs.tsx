@@ -515,7 +515,7 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
                     onClick={() => void handleSelectQueue(index)}
                     className={cn(
                       'w-full rounded-md border px-3 py-2 text-left text-sm transition',
-                      active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-accent'
+                      active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent'
                     )}
                   >
                     {queue.name}
@@ -551,12 +551,12 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
                       onClick={(event) => handleSelectMessage(index, event)}
                       className={cn(
                         'w-full select-none rounded-md border px-3 py-2 text-left text-sm transition focus:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
-                        active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-accent'
+                        active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent'
                       )}
                     >
                       <div>{message.id}</div>
                       {message.sentAt && (
-                        <p className={cn('mt-1 text-xs', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                        <p className={cn('mt-1 text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>
                           {message.sentAt}
                         </p>
                       )}
