@@ -1,6 +1,6 @@
 'use client';
 
-import { type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import JSZip from 'jszip';
 import { Pencil, Plus } from 'lucide-react';
 
@@ -11,8 +11,8 @@ import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CodeEditor } from '@/components/ui/code-editor';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { filterBySearch } from '@/lib/floci/search';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
@@ -54,101 +54,6 @@ function isTextPath(path: string): boolean {
   return /\.(js|ts|tsx|json|py|txt|md|yml|yaml|sh)$/i.test(path);
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
-}
-
-function isWordBoundary(value: string): boolean {
-  return !/[A-Za-z0-9_$]/.test(value);
-}
-
-function highlightCode(code: string, path: string): string {
-  const isJson = /\.json$/i.test(path);
-  const jsKeywords = new Set([
-    'const',
-    'let',
-    'var',
-    'function',
-    'return',
-    'if',
-    'else',
-    'for',
-    'while',
-    'async',
-    'await',
-    'export',
-    'import',
-    'class',
-    'new',
-    'try',
-    'catch',
-    'throw',
-  ]);
-  const out: string[] = [];
-  let i = 0;
-
-  while (i < code.length) {
-    const ch = code[i];
-
-    if (ch === '"' || ch === "'") {
-      const quote = ch;
-      let j = i + 1;
-      let escaped = false;
-      while (j < code.length) {
-        const cj = code[j];
-        if (!escaped && cj === quote) {
-          j += 1;
-          break;
-        }
-        if (escaped) {
-          escaped = false;
-        } else if (cj === '\\') {
-          escaped = true;
-        }
-        j += 1;
-      }
-      out.push(`<span class="text-emerald-300">${escapeHtml(code.slice(i, j))}</span>`);
-      i = j;
-      continue;
-    }
-
-    if (/[0-9]/.test(ch)) {
-      let j = i + 1;
-      while (j < code.length && /[0-9._]/.test(code[j])) j += 1;
-      out.push(`<span class="text-sky-300">${escapeHtml(code.slice(i, j))}</span>`);
-      i = j;
-      continue;
-    }
-
-    if (/[A-Za-z_$]/.test(ch)) {
-      let j = i + 1;
-      while (j < code.length && /[A-Za-z0-9_$]/.test(code[j])) j += 1;
-      const word = code.slice(i, j);
-      const prev = i > 0 ? code[i - 1] : ' ';
-      const next = j < code.length ? code[j] : ' ';
-      const boundary = isWordBoundary(prev) && isWordBoundary(next);
-
-      if (boundary && (word === 'true' || word === 'false' || word === 'null')) {
-        out.push(`<span class="text-amber-300">${word}</span>`);
-      } else if (!isJson && boundary && jsKeywords.has(word)) {
-        out.push(`<span class="text-violet-300">${word}</span>`);
-      } else {
-        out.push(escapeHtml(word));
-      }
-      i = j;
-      continue;
-    }
-
-    out.push(escapeHtml(ch));
-    i += 1;
-  }
-
-  return out.join('');
-}
-
 export default function LambdaPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
 
@@ -177,8 +82,6 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
   const [editorError, setEditorError] = useState('');
   const [savingCode, setSavingCode] = useState(false);
   const [loadingCode, setLoadingCode] = useState(false);
-  const editorPreviewRef = useRef<HTMLPreElement | null>(null);
-  const inlineTemplatePreviewRef = useRef<HTMLPreElement | null>(null);
 
   const loadFunctions = useCallback(async () => {
     setLoading(true);
@@ -362,6 +265,17 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
     );
   }, [editorValue, selectedPath]);
 
+  const handleEditorChange = useCallback((nextValue: string) => {
+    setEditorValue(nextValue);
+    if (!selectedPath) return;
+    setEntries((current) =>
+      current.map((entry) => {
+        if (entry.path !== selectedPath || !entry.isText) return entry;
+        return { ...entry, text: nextValue };
+      })
+    );
+  }, [selectedPath]);
+
   const saveFunctionCode = useCallback(async () => {
     if (!selectedFunctionName) {
       setEditorError('Select a function first.');
@@ -441,28 +355,6 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
     },
     [api, createSourceMode, createZipFile, handler, inlineTemplate, refreshFunctionsOptimistically, roleArn, runtime]
   );
-
-  const highlighted = useMemo(() => {
-    return highlightCode(editorValue, selectedPath || 'index.js');
-  }, [editorValue, selectedPath]);
-
-  const highlightedInlineTemplate = useMemo(() => {
-    return highlightCode(inlineTemplate, INLINE_TEMPLATE_FILENAME);
-  }, [inlineTemplate]);
-
-  const syncEditorPreviewScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
-    const preview = editorPreviewRef.current;
-    if (!preview) return;
-    preview.scrollTop = event.currentTarget.scrollTop;
-    preview.scrollLeft = event.currentTarget.scrollLeft;
-  }, []);
-
-  const syncInlineTemplatePreviewScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
-    const preview = inlineTemplatePreviewRef.current;
-    if (!preview) return;
-    preview.scrollTop = event.currentTarget.scrollTop;
-    preview.scrollLeft = event.currentTarget.scrollLeft;
-  }, []);
 
   useEffect(() => {
     if (mode !== 'edit' || !selectedFunctionName) return;
@@ -620,22 +512,15 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
               </div>
 
               <div className='flex min-h-0 flex-col rounded-md border p-3'>
-                <div className='relative min-h-0 flex-1 overflow-hidden rounded-md border bg-slate-950/70'>
-                  <pre
-                    aria-hidden='true'
-                    ref={editorPreviewRef}
-                    className='pointer-events-none h-full overflow-auto p-3 font-mono text-sm leading-6 text-slate-100'
-                  >
-                    <code dangerouslySetInnerHTML={{ __html: highlighted + '\n' }} />
-                  </pre>
-                  <Textarea
+                <div className='min-h-0 flex-1'>
+                  <CodeEditor
                     value={editorValue}
-                    onChange={(event) => setEditorValue(event.target.value)}
-                    onBlur={applyEditorValueToEntry}
-                    onScroll={syncEditorPreviewScroll}
-                    disabled={!selectedPath || !entries.find((entry) => entry.path === selectedPath)?.isText}
-                    className='absolute inset-0 h-full w-full resize-none overflow-auto border-0 bg-transparent p-3 font-mono text-sm leading-6 text-transparent caret-slate-100 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0'
-                    spellCheck={false}
+                    onChange={handleEditorChange}
+                    path={selectedPath || 'index.js'}
+                    readOnly={!selectedPath || !entries.find((entry) => entry.path === selectedPath)?.isText}
+                    className='h-full'
+                    height='100%'
+                    minHeight='100%'
                   />
                 </div>
                 {editorError ? <p className='mt-2 text-xs text-destructive'>{editorError}</p> : null}
@@ -698,22 +583,7 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
                   Reset Template
                 </Button>
               </div>
-              <div className='relative overflow-hidden rounded-md border bg-slate-950/70'>
-                <pre
-                  aria-hidden='true'
-                  ref={inlineTemplatePreviewRef}
-                  className='pointer-events-none min-h-[240px] max-h-[42vh] overflow-auto p-3 font-mono text-sm leading-6 text-slate-100'
-                >
-                  <code dangerouslySetInnerHTML={{ __html: highlightedInlineTemplate + '\n' }} />
-                </pre>
-                <Textarea
-                  value={inlineTemplate}
-                  onChange={(event) => setInlineTemplate(event.target.value)}
-                  onScroll={syncInlineTemplatePreviewScroll}
-                  className='absolute inset-0 h-full w-full resize-none overflow-auto border-0 bg-transparent p-3 font-mono text-sm leading-6 text-transparent caret-slate-100 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0'
-                  spellCheck={false}
-                />
-              </div>
+              <CodeEditor value={inlineTemplate} onChange={setInlineTemplate} path={INLINE_TEMPLATE_FILENAME} height='42vh' minHeight='240px' maxHeight='42vh' />
             </div>
           ) : (
             <div className='grid gap-1'>
