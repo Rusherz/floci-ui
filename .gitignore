@@ -23,3 +23,4 @@ lambdas/
 
 # Local agent workspace
 .claude/
+.playwright-mcp/
