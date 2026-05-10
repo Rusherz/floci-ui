@@ -6,10 +6,10 @@ import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServiceShell } from '@/components/floci/service-shell';
-import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CodeEditor } from '@/components/ui/code-editor';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { filterBySearch, normalizeSearchTerm } from '@/lib/floci/search';
@@ -870,12 +870,13 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder='Search log groups...'
+      showSearch={false}
       onRefresh={handleRefresh}
       refreshDisabled={loading}
       pollingDefaultEnabled
       status={status}
     >
-      <Card className='min-h-0 min-w-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
+      <Card className='min-h-0 min-w-0 rounded-md shadow-none'>
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Log Groups ({filtered.length})</CardTitle>
@@ -918,14 +919,20 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
               </Button>
             </div>
           </div>
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder='Search log groups...'
+            className='mt-3 h-10'
+          />
         </CardHeader>
-        <CardContent className='xl:min-h-0 xl:flex-1'>
+        <CardContent>
           {!filtered.length ? (
             <p className='text-sm text-muted-foreground'>No log groups found.</p>
           ) : (
             <div
               ref={groupsListRef}
-              className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'
+              className='flex h-[calc(100dvh-var(--service-header-offset,11rem))] flex-col gap-2 overflow-y-auto pr-1'
               tabIndex={0}
               role='listbox'
               aria-label='CloudWatch log groups'
@@ -975,8 +982,8 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         </CardContent>
       </Card>
 
-      <section className='grid min-h-0 min-w-0 gap-4 lg:grid-rows-[auto_minmax(0,1fr)]'>
-        <Card className={cn('min-w-0 rounded-md shadow-none', filtersOpen ? 'min-h-[180px]' : 'min-h-0')}>
+      <section className='grid min-h-0 min-w-0 auto-rows-min content-start items-start gap-4'>
+        <Card className={cn('min-w-0 self-start rounded-md shadow-none', filtersOpen ? 'min-h-[180px]' : 'min-h-0')}>
           <CardHeader>
             <div className='flex items-center justify-between gap-2'>
               <CardTitle className='text-base'>Filter</CardTitle>
@@ -1030,7 +1037,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         </Card>
 
         <div className='grid min-h-0 min-w-0 gap-4 lg:grid-cols-2'>
-          <Card className='min-h-0 min-w-0 rounded-md shadow-none lg:flex lg:flex-col lg:overflow-hidden'>
+          <Card className='min-h-0 min-w-0 rounded-md shadow-none'>
             <CardHeader>
               <div className='flex items-center justify-between gap-2'>
                 <div>
@@ -1044,7 +1051,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
+            <CardContent className='min-h-0'>
               {!filteredEvents.length ? (
                 <div className='space-y-2'>
                   <p className='text-sm text-muted-foreground'>No events matched current filters.</p>
@@ -1054,7 +1061,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
               ) : (
                 <div
                   ref={eventsListRef}
-                  className='flex h-full min-h-0 flex-col gap-2 overflow-auto pr-1'
+                  className='flex h-[calc(100dvh-var(--service-header-offset,11rem))] flex-col gap-2 overflow-y-auto pr-1'
                   tabIndex={0}
                   role='listbox'
                   aria-label='CloudWatch events'
@@ -1123,11 +1130,11 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
             </CardContent>
           </Card>
 
-          <Card className='min-h-0 min-w-0 rounded-md shadow-none lg:flex lg:flex-col lg:overflow-hidden'>
+          <Card className='min-h-0 min-w-0 rounded-md shadow-none'>
             <CardHeader>
               <CardTitle className='text-base'>Event Detail</CardTitle>
             </CardHeader>
-          <CardContent className='flex min-h-0 flex-col lg:flex-1 lg:overflow-hidden'>
+          <CardContent className='flex h-[calc(100dvh-var(--service-header-offset,11rem))] flex-col overflow-y-auto'>
               {selectedEvent && selectedEvent.attributeRows?.length ? (
                 <div className='mb-3 shrink-0 rounded-md border bg-background/40 p-3'>
                   <p className='mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Attributes</p>
@@ -1141,8 +1148,8 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                   </dl>
                 </div>
               ) : null}
-              <ScrollableCodeBlock
-                content={
+              <CodeEditor
+                value={
                   selectedEvent
                     ? JSON.stringify(
                         {
@@ -1165,8 +1172,12 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                       )
                     : 'Select an event.'
                 }
-                fillContainer
-                className='flex-1 min-h-0'
+                onChange={() => {}}
+                path='event-detail.json'
+                readOnly
+                className='min-h-[220px] flex-1'
+                height='100%'
+                minHeight='220px'
               />
           </CardContent>
         </Card>
