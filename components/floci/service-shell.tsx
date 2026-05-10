@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { FlociSidebar } from '@/components/floci/floci-sidebar';
 import { ServiceHeader } from '@/components/floci/service-header';
 import { ServiceStatusBanner } from '@/components/floci/service-status-banner';
 import type { FlociElement } from '@/lib/floci/elements';
@@ -22,6 +21,7 @@ type ServiceShellProps = {
   search: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
+  showSearch?: boolean;
   headerTopActions?: ReactNode;
   headerBottomContent?: ReactNode;
   onRefresh: (options?: RefreshOptions) => void | Promise<void>;
@@ -35,13 +35,14 @@ type ServiceShellProps = {
 };
 
 export function ServiceShell({
-  enabledElements,
-  activeSlug,
+  enabledElements: _enabledElements,
+  activeSlug: _activeSlug,
   title,
   description,
   search,
   onSearchChange,
   searchPlaceholder,
+  showSearch = true,
   headerTopActions,
   headerBottomContent,
   onRefresh,
@@ -53,6 +54,11 @@ export function ServiceShell({
   children,
   contentClassName,
 }: ServiceShellProps) {
+  void _enabledElements;
+  void _activeSlug;
+
+  const stickyTopRef = useRef<HTMLDivElement | null>(null);
+  const [stickyOffsetPx, setStickyOffsetPx] = useState(176);
   const [pollingEnabled, setPollingEnabled] = useState(pollingDefaultEnabled);
   const [currentPollingIntervalMs, setCurrentPollingIntervalMs] = useState(pollingIntervalMs);
   const [pollProgress, setPollProgress] = useState(0);
@@ -68,7 +74,7 @@ export function ServiceShell({
     setPollingEnabled(pollingDefaultEnabled);
     setCurrentPollingIntervalMs(pollingIntervalMs);
     nextPollAtRef.current = Date.now() + pollingIntervalMs;
-  }, [pollingDefaultEnabled, pollingIntervalMs, activeSlug]);
+  }, [pollingDefaultEnabled, pollingIntervalMs, _activeSlug]);
 
   const togglePolling = useCallback(() => {
     setPollingEnabled((enabled) => {
@@ -128,18 +134,37 @@ export function ServiceShell({
     };
   }, [currentPollingIntervalMs, pollingEnabled, refreshDisabled]);
 
-  return (
-    <main className='h-screen'>
-      <section className='grid h-full w-full grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]'>
-        <FlociSidebar enabledElements={enabledElements} activeSlug={activeSlug} onRefresh={() => void onRefresh({ source: 'manual' })} refreshDisabled={refreshDisabled} />
+  useEffect(() => {
+    const node = stickyTopRef.current;
+    if (!node) return;
 
-        <section className='flex min-h-0 min-w-0 flex-col overflow-hidden'>
+    const updateOffset = () => {
+      setStickyOffsetPx(Math.ceil(node.getBoundingClientRect().height));
+    };
+
+    updateOffset();
+
+    const observer = new ResizeObserver(updateOffset);
+    observer.observe(node);
+    window.addEventListener('resize', updateOffset);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateOffset);
+    };
+  }, [search, showSearch, title]);
+
+  return (
+    <section className='flex min-h-screen min-w-0 flex-col'>
+      <div className='sticky top-0 z-30'>
+        <div ref={stickyTopRef}>
           <ServiceHeader
             title={title}
             description={description}
             search={search}
             onSearchChange={onSearchChange}
             searchPlaceholder={searchPlaceholder}
+            showSearch={showSearch}
             pollingEnabled={pollingEnabled}
             pollProgress={pollProgress}
             onTogglePolling={togglePolling}
@@ -149,23 +174,24 @@ export function ServiceShell({
             topActions={headerTopActions}
             bottomContent={headerBottomContent}
           />
+        </div>
+        <div className='pointer-events-none absolute inset-x-0 top-full z-40'>
+          <ServiceStatusBanner type={status.type} message={status.message} />
+        </div>
+      </div>
 
-          {statusSlotContent}
+      {statusSlotContent}
 
-          <section className='relative min-h-0 min-w-0 flex-1'>
-            <ServiceStatusBanner type={status.type} message={status.message} />
-
-            <section
-              className={cn(
-                'grid min-h-0 min-w-0 h-full gap-4 overflow-x-hidden overflow-y-auto p-4 md:p-6 xl:grid-cols-[320px_minmax(0,1fr)]',
-                contentClassName
-              )}
-            >
-              {children}
-            </section>
-          </section>
+      <section className='relative min-w-0 flex-1' style={{ ['--service-header-offset' as string]: `${stickyOffsetPx}px` }}>
+        <section
+          className={cn(
+            'grid min-w-0 gap-4 overflow-x-hidden p-4 md:p-6 xl:grid-cols-[320px_minmax(0,1fr)]',
+            contentClassName
+          )}
+        >
+          {children}
         </section>
       </section>
-    </main>
+    </section>
   );
 }

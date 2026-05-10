@@ -8,6 +8,7 @@ import { STORAGE_KEYS } from '@/lib/floci/types';
 
 type ThemeToggleButtonProps = {
   className?: string;
+  iconOnly?: boolean;
 };
 
 function readStoredTheme(): 'light' | 'dark' {
@@ -23,7 +24,7 @@ function readStoredTheme(): 'light' | 'dark' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-export function ThemeToggleButton({ className }: ThemeToggleButtonProps) {
+export function ThemeToggleButton({ className, iconOnly = false }: ThemeToggleButtonProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [bootstrapped, setBootstrapped] = useState(false);
 
@@ -45,9 +46,15 @@ export function ThemeToggleButton({ className }: ThemeToggleButtonProps) {
   }, [bootstrapped, theme]);
 
   return (
-    <Button variant='outline' className={className || 'w-full justify-start gap-2'} onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}>
+    <Button
+      variant='outline'
+      className={className || 'w-full justify-start gap-2'}
+      onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+    >
       {theme === 'dark' ? <Sun className='size-4' /> : <Moon className='size-4' />}
-      {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+      {!iconOnly ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : null}
     </Button>
   );
 }
