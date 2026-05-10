@@ -20,6 +20,164 @@ import type { CloudWatchLogEvent, CloudWatchLogGroupSummary, CloudWatchLogStream
 import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
 
+type KqlTokenType = 'WORD' | 'STRING' | 'LPAREN' | 'RPAREN' | 'COLON' | 'AND' | 'OR' | 'NOT' | 'EOF';
+type KqlToken = { type: KqlTokenType; value: string };
+type KqlNode =
+  | { type: 'TERM'; field: string | null; value: string }
+  | { type: 'NOT'; expr: KqlNode }
+  | { type: 'AND'; left: KqlNode; right: KqlNode }
+  | { type: 'OR'; left: KqlNode; right: KqlNode };
+
+function tokenizeKql(query: string): KqlToken[] {
+  const tokens: KqlToken[] = [];
+  let i = 0;
+  while (i < query.length) {
+    const ch = query[i];
+    if (/\s/.test(ch)) {
+      i += 1;
+      continue;
+    }
+    if (ch === '(') {
+      tokens.push({ type: 'LPAREN', value: ch });
+      i += 1;
+      continue;
+    }
+    if (ch === ')') {
+      tokens.push({ type: 'RPAREN', value: ch });
+      i += 1;
+      continue;
+    }
+    if (ch === ':') {
+      tokens.push({ type: 'COLON', value: ch });
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      let out = '';
+      while (j < query.length) {
+        const cj = query[j];
+        if (cj === '"' && query[j - 1] !== '\\') break;
+        out += cj;
+        j += 1;
+      }
+      tokens.push({ type: 'STRING', value: out.replace(/\\"/g, '"') });
+      i = j + 1;
+      continue;
+    }
+    let j = i;
+    while (j < query.length && !/\s/.test(query[j]) && !['(', ')', ':'].includes(query[j])) j += 1;
+    const word = query.slice(i, j);
+    const upper = word.toUpperCase();
+    if (upper === 'AND') tokens.push({ type: 'AND', value: word });
+    else if (upper === 'OR') tokens.push({ type: 'OR', value: word });
+    else if (upper === 'NOT') tokens.push({ type: 'NOT', value: word });
+    else tokens.push({ type: 'WORD', value: word });
+    i = j;
+  }
+  tokens.push({ type: 'EOF', value: '' });
+  return tokens;
+}
+
+function parseKql(query: string): KqlNode | null {
+  const tokens = tokenizeKql(query);
+  let pos = 0;
+  const peek = () => tokens[pos] || tokens[tokens.length - 1];
+  const take = () => tokens[pos++] || tokens[tokens.length - 1];
+  const isTermStart = (type: KqlTokenType) => type === 'WORD' || type === 'STRING' || type === 'LPAREN' || type === 'NOT';
+
+  const parsePrimary = (): KqlNode | null => {
+    const token = peek();
+    if (token.type === 'NOT') {
+      take();
+      const expr = parsePrimary();
+      return expr ? { type: 'NOT', expr } : null;
+    }
+    if (token.type === 'LPAREN') {
+      take();
+      const expr = parseOr();
+      if (peek().type === 'RPAREN') take();
+      return expr;
+    }
+    if (token.type === 'WORD' || token.type === 'STRING') {
+      const left = take();
+      if ((left.type === 'WORD' || left.type === 'STRING') && peek().type === 'COLON') {
+        take();
+        const right = peek();
+        if (right.type === 'WORD' || right.type === 'STRING') {
+          take();
+          return { type: 'TERM', field: left.value.toLowerCase(), value: right.value };
+        }
+        return { type: 'TERM', field: left.value.toLowerCase(), value: '*' };
+      }
+      return { type: 'TERM', field: null, value: left.value };
+    }
+    return null;
+  };
+
+  const parseAnd = (): KqlNode | null => {
+    let left = parsePrimary();
+    while (true) {
+      const token = peek();
+      if (token.type === 'AND') {
+        take();
+        const right = parsePrimary();
+        if (!left || !right) return left;
+        left = { type: 'AND', left, right };
+        continue;
+      }
+      if (isTermStart(token.type)) {
+        const right = parsePrimary();
+        if (!left || !right) return left;
+        left = { type: 'AND', left, right };
+        continue;
+      }
+      break;
+    }
+    return left;
+  };
+
+  const parseOr = (): KqlNode | null => {
+    let left = parseAnd();
+    while (peek().type === 'OR') {
+      take();
+      const right = parseAnd();
+      if (!left || !right) return left;
+      left = { type: 'OR', left, right };
+    }
+    return left;
+  };
+
+  return parseOr();
+}
+
+function wildcardToRegExp(value: string): RegExp {
+  const escaped = value.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+  return new RegExp(`^${escaped}$`, 'i');
+}
+
+function matchesValue(raw: string, pattern: string): boolean {
+  if (pattern === '*') return Boolean(raw.trim());
+  const source = normalizeSearchTerm(raw);
+  const target = normalizeSearchTerm(pattern);
+  if (target.includes('*') || target.includes('?')) {
+    return wildcardToRegExp(target).test(source);
+  }
+  return source.includes(target);
+}
+
+function readPath(source: unknown, path: string): unknown {
+  const parts = path.split('.').filter(Boolean);
+  let current: unknown = source;
+  for (const part of parts) {
+    if (!current || typeof current !== 'object' || !(part in (current as Record<string, unknown>))) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
 export default function CloudWatchPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
 
@@ -44,6 +202,9 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
   const [clearLogsOpen, setClearLogsOpen] = useState(false);
   const [deleteGroupsOpen, setDeleteGroupsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterDiagnostic, setFilterDiagnostic] = useState('');
+  const [lastFilterDebug, setLastFilterDebug] = useState('');
+  const groupsListRef = useRef<HTMLDivElement | null>(null);
   const eventsListRef = useRef<HTMLDivElement | null>(null);
   const lastGroupAnchorRef = useRef<number | null>(null);
   const hasInitializedGroupSelectionRef = useRef(false);
@@ -131,6 +292,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
 
   const filtered = useMemo(() => filterBySearch(groups, search, (group) => group.logGroupName), [groups, search]);
   const normalizedMessageFilter = useMemo(() => normalizeSearchTerm(messageFilter), [messageFilter]);
+  const kqlAst = useMemo(() => parseKql(messageFilter), [messageFilter]);
 
   const refreshGroupsOptimistically = useOptimisticCreateRefresh<CloudWatchLogGroupSummary>({
     upsert: (group) => {
@@ -172,14 +334,9 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           }
           lastGroupAnchorRef.current = index;
         } else {
-          if (next.size === 1 && next.has(group.logGroupName)) {
-            next.clear();
-            lastGroupAnchorRef.current = null;
-          } else {
-            next.clear();
-            next.add(group.logGroupName);
-            lastGroupAnchorRef.current = index;
-          }
+          next.clear();
+          next.add(group.logGroupName);
+          lastGroupAnchorRef.current = index;
         }
         return Array.from(next);
       });
@@ -207,6 +364,14 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         setStatus({ type: 'error', message: 'Start date must be before end date.' });
       }
       return;
+    }
+
+    if (!silent) {
+      setFilterDiagnostic('');
+      setLastFilterDebug('');
+      const fromLabel = fromDateTime || 'any';
+      const toLabel = toDateTime || 'any';
+      setLastFilterDebug(`query=${messageFilter.trim() || '(empty)'} groups=${effectiveGroupNames.length} from=${fromLabel} to=${toLabel}`);
     }
 
     if (!silent) setLoading(true);
@@ -243,13 +408,28 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         })
         .slice(0, 200);
       setEvents(deduped);
-      if (!silent) setStatus({ type: 'info', message: `Loaded ${deduped.length} event(s).` });
+      if (!silent) {
+        if (!deduped.length && normalizedMessageFilter) {
+          setStatus({ type: 'info', message: 'Loaded 0 event(s).' });
+          setFilterDiagnostic('No events matched the current KQL filter.');
+        } else {
+          setStatus({ type: 'info', message: `Loaded ${deduped.length} event(s).` });
+          setFilterDiagnostic('');
+          if (!normalizedMessageFilter) {
+            setLastFilterDebug('');
+          }
+        }
+      }
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to filter logs' });
+      if (!silent) {
+        setFilterDiagnostic('');
+        setLastFilterDebug('');
+      }
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [api, effectiveGroupNames, fromDateTime, toDateTime, toEpochMs]);
+  }, [api, effectiveGroupNames, fromDateTime, messageFilter, normalizedMessageFilter, toDateTime, toEpochMs]);
 
   const clearFilters = useCallback(() => {
     setSearch('');
@@ -604,10 +784,48 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         event.level === severityTarget ||
         (severityTarget === 'WARN' && event.level === 'WARNING');
       if (!severityMatch) return false;
-      if (!normalizedMessageFilter) return true;
-      return event.searchableText.includes(normalizedMessageFilter);
+      if (!kqlAst) return true;
+
+      const fields: Record<string, string> = {
+        message: event.message || '',
+        text: event.displayMessage || '',
+        service: event.service || '',
+        level: event.level || '',
+        severity: event.level || '',
+        requestid: event.requestId || '',
+        enduserid: event.enduserId || '',
+        logstream: event.logStreamName || '',
+        group: event.logStreamName?.split(':')[0] || '',
+      };
+
+      const matchesTerm = (field: string | null, value: string) => {
+        if (!field) {
+          return matchesValue(event.searchableText, value);
+        }
+
+        const normalizedField = field.replace(/_/g, '');
+        if (normalizedField in fields) {
+          return matchesValue(fields[normalizedField], value);
+        }
+
+        const payloadValue = readPath(event.parsedPayload, field);
+        if (payloadValue !== undefined) {
+          return matchesValue(String(payloadValue), value);
+        }
+
+        return false;
+      };
+
+      const evaluate = (node: KqlNode): boolean => {
+        if (node.type === 'TERM') return matchesTerm(node.field, node.value);
+        if (node.type === 'NOT') return !evaluate(node.expr);
+        if (node.type === 'AND') return evaluate(node.left) && evaluate(node.right);
+        return evaluate(node.left) || evaluate(node.right);
+      };
+
+      return evaluate(kqlAst);
     });
-  }, [normalizedMessageFilter, parsedEvents, severityFilter]);
+  }, [kqlAst, parsedEvents, severityFilter]);
 
   const getEventKey = useCallback((event: CloudWatchLogEvent) => {
     if (event.eventId) {
@@ -705,16 +923,48 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           {!filtered.length ? (
             <p className='text-sm text-muted-foreground'>No log groups found.</p>
           ) : (
-            <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
+            <div
+              ref={groupsListRef}
+              className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'
+              tabIndex={0}
+              role='listbox'
+              aria-label='CloudWatch log groups'
+              onKeyDown={(event) => {
+                if (!filtered.length) return;
+                if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+                event.preventDefault();
+
+                const currentName = selectedGroups[0] || filtered[0]?.logGroupName || '';
+                const currentIndex = filtered.findIndex((item) => item.logGroupName === currentName);
+                const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+                const nextIndex =
+                  event.key === 'ArrowDown'
+                    ? Math.min(filtered.length - 1, safeIndex + 1)
+                    : Math.max(0, safeIndex - 1);
+                const nextGroup = filtered[nextIndex];
+                if (!nextGroup) return;
+
+                setSelectedGroups([nextGroup.logGroupName]);
+                lastGroupAnchorRef.current = nextIndex;
+
+                const nextButton = groupsListRef.current?.querySelector<HTMLButtonElement>(`[data-group-name="${nextGroup.logGroupName}"]`);
+                nextButton?.scrollIntoView({ block: 'nearest' });
+                nextButton?.focus({ preventScroll: true });
+              }}
+            >
               {filtered.map((group, index) => {
                 const active = selectedGroups.includes(group.logGroupName);
                 return (
-                  <button
-                    key={group.logGroupName}
-                    type='button'
-                    onClick={(event) => handleSelectGroup(index, event)}
-                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
-                  >
+                    <button
+                      key={group.logGroupName}
+                      data-group-name={group.logGroupName}
+                      type='button'
+                      onClick={(event) => handleSelectGroup(index, event)}
+                      className={cn(
+                        'w-full rounded-md border px-3 py-2 text-left text-sm transition focus:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
+                        active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent'
+                      )}
+                    >
                     <div className='truncate font-medium'>{group.logGroupName}</div>
                     <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{group.retentionInDays ? `${group.retentionInDays} day retention` : 'No retention'}</p>
                   </button>
@@ -739,7 +989,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
             <CardContent className='grid gap-4'>
               <div className='grid gap-2'>
                 <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>Message</p>
-                <Input value={messageFilter} onChange={(event) => setMessageFilter(event.target.value)} placeholder='Filter message text' />
+                <Input value={messageFilter} onChange={(event) => setMessageFilter(event.target.value)} placeholder='KQL (e.g. service:api-gateway level:error -requestid:abc)' />
               </div>
               <div className='grid gap-3 md:grid-cols-3'>
                 <div className='grid gap-2'>
@@ -796,7 +1046,11 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
             </CardHeader>
             <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
               {!filteredEvents.length ? (
-                <p className='text-sm text-muted-foreground'>No events matched current filters.</p>
+                <div className='space-y-2'>
+                  <p className='text-sm text-muted-foreground'>No events matched current filters.</p>
+                  {filterDiagnostic ? <p className='text-xs text-muted-foreground'>{filterDiagnostic}</p> : null}
+                  {lastFilterDebug ? <p className='text-xs text-muted-foreground/80'>{lastFilterDebug}</p> : null}
+                </div>
               ) : (
                 <div
                   ref={eventsListRef}

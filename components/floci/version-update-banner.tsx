@@ -75,7 +75,10 @@ export function VersionUpdateBanner() {
   if (!latestVersion || dismissed) return null;
 
   return (
-    <Alert variant='destructive' className='fixed right-4 top-4 z-50 max-w-sm bg-background shadow-lg'>
+    <Alert
+      variant='destructive'
+      className='fixed right-4 top-4 z-50 max-w-sm border-yellow-500/60 bg-background text-yellow-700 shadow-lg dark:border-yellow-500 dark:text-yellow-300 [&>svg]:text-yellow-700 dark:[&>svg]:text-yellow-300'
+    >
       <AlertTitle>New version available</AlertTitle>
       <AlertDescription className='mt-1 text-xs text-muted-foreground'>
         Current: {currentVersion} | Latest: {latestVersion}
@@ -87,6 +90,7 @@ export function VersionUpdateBanner() {
         <Button
           size='sm'
           variant='outline'
+          className='border-yellow-500/60 text-yellow-700 dark:border-yellow-500 dark:text-yellow-300'
           onClick={() => {
             if (activeDiffKey) {
               window.localStorage.setItem(`${DISMISSED_STORAGE_PREFIX}${activeDiffKey}`, '1');

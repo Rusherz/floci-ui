@@ -30,15 +30,16 @@ const SERVICE_HELP: Record<string, HelpItem[]> = {
   cloudwatch: [
     'Select one or more log groups from the list.',
     'Use Shift+Click for range select and Ctrl/Cmd+Click to toggle additional groups.',
-    'Set severity, message, and time filters, then run filter to load recent events.',
+    'Set severity, message KQL query, and time filters, then run filter to load recent events.',
     {
-      text: 'Message filter examples from our log shape:',
+      text: 'Message KQL examples:',
       children: [
-        'ERROR (basic text match)',
-        '{ $.severity_text = "ERROR" }',
-        '{ $.body = "request failed" }',
-        '{ $.attributes.service = "api-gateway" }',
-        '"method:\\"POST\\" path:\\"/v1/workflows\\""',
+        'api-gateway (free-text contains)',
+        'service:api-gateway AND level:error',
+        'structured.attributes.service:"learning-object-service"',
+        'NOT requestid:*',
+        '(service:api-gateway OR service:learning-object-service) AND level:warn',
+        'message:"request failed*"',
       ],
     },
   ],
@@ -93,7 +94,7 @@ export function ElementsNav({ activeSlug, elements }: ElementsNavProps) {
       </nav>
 
       <Dialog open={Boolean(helpSlug)} onOpenChange={(open) => !open && setHelpSlug(null)}>
-        <DialogContent>
+        <DialogContent className='sm:max-w-3xl'>
           <DialogHeader>
             <DialogTitle>{helpElement ? `How to use ${helpElement.label}` : 'Service help'}</DialogTitle>
             <DialogDescription>{helpElement?.description}</DialogDescription>
