@@ -219,16 +219,17 @@ jobs:
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
             VERSION_MANIFEST_URL=${{ needs.resolve_image_version.outputs.manifest_url }}
-          cache-from: type=local,src=/tmp/.buildx-cache-amd64
-          cache-to: type=local,dest=/tmp/.buildx-cache-amd64-new,mode=max
+          cache-from: type=local,src=/home/rusherz/.cache/buildx/floci-ui-amd64
+          cache-to: type=local,dest=/home/rusherz/.cache/buildx/floci-ui-amd64-new,mode=max
 
       - name: Persist amd64 local buildx cache
         if: always()
         shell: bash
         run: |
-          rm -rf /tmp/.buildx-cache-amd64
-          if [ -d /tmp/.buildx-cache-amd64-new ]; then
-            mv /tmp/.buildx-cache-amd64-new /tmp/.buildx-cache-amd64
+          mkdir -p /home/rusherz/.cache/buildx
+          rm -rf /home/rusherz/.cache/buildx/floci-ui-amd64
+          if [ -d /home/rusherz/.cache/buildx/floci-ui-amd64-new ]; then
+            mv /home/rusherz/.cache/buildx/floci-ui-amd64-new /home/rusherz/.cache/buildx/floci-ui-amd64
           fi
 
       - name: Verify amd64 image manifest
@@ -282,16 +283,17 @@ jobs:
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
             VERSION_MANIFEST_URL=${{ needs.resolve_image_version.outputs.manifest_url }}
-          cache-from: type=local,src=/tmp/.buildx-cache-arm64
-          cache-to: type=local,dest=/tmp/.buildx-cache-arm64-new,mode=max
+          cache-from: type=local,src=/home/rusherz/.cache/buildx/floci-ui-arm64
+          cache-to: type=local,dest=/home/rusherz/.cache/buildx/floci-ui-arm64-new,mode=max
 
       - name: Persist arm64 local buildx cache
         if: always()
         shell: bash
         run: |
-          rm -rf /tmp/.buildx-cache-arm64
-          if [ -d /tmp/.buildx-cache-arm64-new ]; then
-            mv /tmp/.buildx-cache-arm64-new /tmp/.buildx-cache-arm64
+          mkdir -p /home/rusherz/.cache/buildx
+          rm -rf /home/rusherz/.cache/buildx/floci-ui-arm64
+          if [ -d /home/rusherz/.cache/buildx/floci-ui-arm64-new ]; then
+            mv /home/rusherz/.cache/buildx/floci-ui-arm64-new /home/rusherz/.cache/buildx/floci-ui-arm64
           fi
 
       - name: Verify arm64 image manifest
