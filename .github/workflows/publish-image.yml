@@ -7,6 +7,11 @@ on:
       - dev
     tags:
       - 'v*'
+    paths-ignore:
+      - '.github/**'
+      - 'README.md'
+      - 'agents.md'
+      - '**/*.md'
   workflow_dispatch:
     inputs:
       update_changes:
@@ -403,7 +408,7 @@ jobs:
               }
               const conventional = [];
               for (const line of lines) {
-                const m = line.match(/^(feat|fix|perf|refactor)(\\([^)]*\\))?:\\s+(.+)$/i);
+                const m = line.match(/^(feat|fix)(\\([^)]*\\))?:\\s+(.+)$/i);
                 if (m && m[3]) conventional.push(m[3].trim());
               }
               const picked = explicit.length ? explicit : conventional;
@@ -416,7 +421,11 @@ jobs:
                 if (unique.length >= 12) break;
               }
               if (!unique.length && lines[0]) {
-                unique.push(lines[0]);
+                const latest = lines[0];
+                const skipFallback = /^(ci|chore|docs|test|build|style|refactor)(\\([^)]*\\))?:/i.test(latest);
+                if (!skipFallback) {
+                  unique.push(latest);
+                }
               }
               process.stdout.write(JSON.stringify(unique));
             " "$COMMIT_SUBJECTS")"
