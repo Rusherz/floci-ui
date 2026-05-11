@@ -8,6 +8,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      update_changes:
+        description: 'Optional newline-delimited feature changes to publish in version.json'
+        required: false
+        type: string
 
 concurrency:
   group: publish-image-${{ github.ref }}
@@ -339,6 +344,12 @@ jobs:
           BASE_URL="${BASE_URL%/}"
           MAIN_URL="$BASE_URL/version.json"
           DEV_URL="$BASE_URL/dev/version.json"
+          RAW_CHANGES='${{ github.event.inputs.update_changes || '' }}'
+          CHANGES_JSON="$(node -e "
+            const raw = process.argv[1] || '';
+            const changes = raw.split(/\\r?\\n/).map((s) => s.trim()).filter(Boolean);
+            process.stdout.write(JSON.stringify(changes));
+          " "$RAW_CHANGES")"
 
           mkdir -p pages/dev
 
@@ -350,6 +361,7 @@ jobs:
             "version": "${{ needs.resolve_image_version.outputs.version_tag }}",
             "versionImage": "${{ needs.resolve_image_version.outputs.version_image }}",
             "latestImage": "${{ needs.resolve_image_version.outputs.latest_image }}",
+            "changes": $CHANGES_JSON,
             "commit": "${{ github.sha }}",
             "builtAt": "$BUILT_AT",
             "ref": "${{ github.ref }}"
@@ -361,6 +373,7 @@ jobs:
             "version": "${{ needs.resolve_image_version.outputs.version_tag }}",
             "versionImage": "${{ needs.resolve_image_version.outputs.version_image }}",
             "latestRcImage": "${{ needs.resolve_image_version.outputs.latest_rc_image }}",
+            "changes": $CHANGES_JSON,
             "commit": "${{ github.sha }}",
             "builtAt": "$BUILT_AT",
             "ref": "${{ github.ref }}"

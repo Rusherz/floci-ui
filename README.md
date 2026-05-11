@@ -52,6 +52,13 @@ npm run dev
 | `VERSION_MANIFEST_URL` | Server | `/version.json` | URL to the deployed version manifest (for example GitHub Pages `version.json`). |
 | `FLOCI_LOCAL_DATA_PATH` | Server | unset | Optional base path for Lambda local source files (used by `/api/lambda-source/[name]`). |
 
+### Version Update Changes List
+
+- The update banner reads `changes` from `version.json` via `/api/version-manifest`.
+- `changes` is published by `.github/workflows/publish-image.yml` as an array of strings.
+- For `workflow_dispatch`, set `update_changes` as newline-delimited items to publish release notes in the banner.
+- For branch `push` runs (`main`/`dev`), `changes` defaults to an empty array.
+
 ## Endpoints
 
 - `GET /healthz` returns:

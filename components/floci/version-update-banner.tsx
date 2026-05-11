@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 
 type VersionManifest = {
   version?: string;
+  changes?: string[];
 };
 
 const CHECK_INTERVAL_MS = 60_000;
@@ -14,6 +15,7 @@ const DISMISSED_STORAGE_PREFIX = 'version-update-dismissed:';
 
 export function VersionUpdateBanner() {
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [latestChanges, setLatestChanges] = useState<string[]>([]);
   const [activeDiffKey, setActiveDiffKey] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
@@ -33,18 +35,24 @@ export function VersionUpdateBanner() {
       if (remoteVersion !== currentVersion) {
         const diffKey = `${currentVersion}->${remoteVersion}`;
         const dismissedKey = `${DISMISSED_STORAGE_PREFIX}${diffKey}`;
+        const remoteChanges = Array.isArray(data.changes)
+          ? data.changes.map((item) => String(item).trim()).filter(Boolean)
+          : [];
         if (window.localStorage.getItem(dismissedKey) === '1') {
           setLatestVersion(null);
+          setLatestChanges([]);
           setActiveDiffKey(null);
           setDismissed(true);
           return;
         }
         setActiveDiffKey(diffKey);
         setLatestVersion(remoteVersion);
+        setLatestChanges(remoteChanges);
         setDismissed(false);
         return;
       }
       setLatestVersion(null);
+      setLatestChanges([]);
       setActiveDiffKey(null);
       setDismissed(false);
     } catch {
@@ -83,6 +91,16 @@ export function VersionUpdateBanner() {
       <AlertDescription className='mt-1 text-xs text-muted-foreground'>
         Current: {currentVersion} | Latest: {latestVersion}
       </AlertDescription>
+      {latestChanges.length > 0 ? (
+        <>
+          <AlertDescription className='mt-2 text-xs text-muted-foreground'>Feature changes:</AlertDescription>
+          <ul className='mt-1 list-disc pl-5 text-xs text-muted-foreground'>
+            {latestChanges.map((change) => (
+              <li key={change}>{change}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
       <AlertDescription className='mt-1 text-xs text-muted-foreground'>
         Pull the latest Docker image and restart this container to upgrade.
       </AlertDescription>
