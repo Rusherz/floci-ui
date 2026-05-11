@@ -483,7 +483,7 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
       onRefresh={(options) => void handleRefresh(options)}
       refreshDisabled={state.loading}
       status={banner}
-      contentClassName='overflow-hidden p-4 md:p-6'
+      contentClassName='overflow-hidden p-4 md:p-6 xl:h-[calc(100dvh-var(--service-header-offset))]'
     >
       <Card className='min-h-0 rounded-md shadow-none xl:flex xl:h-full xl:flex-col xl:overflow-hidden'>
         <CardHeader>
