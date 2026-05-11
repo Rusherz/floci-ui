@@ -900,11 +900,15 @@ export function createApiClient(config: ApiConfig) {
   async function filterLogEvents(
     logGroupName: string,
     filterPattern: string,
-    options?: { startTime?: number; endTime?: number }
+    options?: { startTime?: number; endTime?: number; limit?: number }
   ): Promise<CloudWatchLogEvent[]> {
     const trimmedPattern = filterPattern.trim();
-    const pageLimit = 100;
-    const maxPages = 10;
+    const requestedLimit =
+      typeof options?.limit === 'number' && Number.isFinite(options.limit)
+        ? Math.max(1, Math.min(1000, Math.floor(options.limit)))
+        : 200;
+    const pageLimit = Math.min(100, requestedLimit);
+    const maxPages = Math.max(1, Math.min(20, Math.ceil(requestedLimit / pageLimit)));
     const collected: Record<string, unknown>[] = [];
     let nextToken = '';
     const hasStartTime = typeof options?.startTime === 'number' && Number.isFinite(options.startTime);
@@ -936,7 +940,7 @@ export function createApiClient(config: ApiConfig) {
         logStreamName: String(item.logStreamName || ''),
       }))
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 200);
+      .slice(0, requestedLimit);
 
     return newest;
   }

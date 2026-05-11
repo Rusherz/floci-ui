@@ -182,6 +182,7 @@ function readPath(source: unknown, path: string): unknown {
 
 export default function CloudWatchPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
+  const DEFAULT_EVENT_LIMIT = '200';
 
   const [groups, setGroups] = useState<CloudWatchLogGroupSummary[]>([]);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -192,6 +193,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
   const [severityFilter, setSeverityFilter] = useState<'ALL' | 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE'>('ALL');
   const [fromDateTime, setFromDateTime] = useState('');
   const [toDateTime, setToDateTime] = useState('');
+  const [eventLimit, setEventLimit] = useState(DEFAULT_EVENT_LIMIT);
   const [selectedEventKey, setSelectedEventKey] = useState('');
   const [status, setStatus] = useState<ServiceStatus>(EMPTY_SERVICE_STATUS);
   const [loading, setLoading] = useState(false);
@@ -355,6 +357,12 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
     return Number.isFinite(parsed) ? parsed : undefined;
   }, []);
 
+  const resolvedEventLimit = useMemo(() => {
+    const parsed = Number(eventLimit);
+    if (!Number.isFinite(parsed)) return 200;
+    return Math.max(25, Math.min(1000, Math.floor(parsed)));
+  }, [eventLimit]);
+
   const runFilter = useCallback(async (silent = false) => {
     if (!effectiveGroupNames.length) {
       if (!silent) setStatus({ type: 'error', message: 'Select at least one log group first.' });
@@ -376,7 +384,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
       setLastFilterDebug('');
       const fromLabel = fromDateTime || 'any';
       const toLabel = toDateTime || 'any';
-      setLastFilterDebug(`query=${messageFilter.trim() || '(empty)'} groups=${effectiveGroupNames.length} from=${fromLabel} to=${toLabel}`);
+      setLastFilterDebug(`query=${messageFilter.trim() || '(empty)'} groups=${effectiveGroupNames.length} from=${fromLabel} to=${toLabel} limit=${resolvedEventLimit}`);
     }
 
     if (!silent) setLoading(true);
@@ -385,7 +393,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         effectiveGroupNames.map(async (groupName) => {
           let groupEvents: CloudWatchLogEvent[] = [];
           try {
-            groupEvents = await api.filterLogEvents(groupName, '', { startTime, endTime });
+            groupEvents = await api.filterLogEvents(groupName, '', { startTime, endTime, limit: resolvedEventLimit });
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             if (message.includes('ResourceNotFoundException')) {
@@ -411,7 +419,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
             return candidateKey === key;
           }) === index;
         })
-        .slice(0, 200);
+        .slice(0, resolvedEventLimit);
       setEvents(deduped);
       if (!silent) {
         if (!deduped.length && normalizedMessageFilter) {
@@ -435,7 +443,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
       setInitialEventsLoaded(true);
       if (!silent) setLoading(false);
     }
-  }, [api, effectiveGroupNames, fromDateTime, messageFilter, normalizedMessageFilter, toDateTime, toEpochMs]);
+  }, [api, effectiveGroupNames, fromDateTime, messageFilter, normalizedMessageFilter, resolvedEventLimit, toDateTime, toEpochMs]);
 
   const clearFilters = useCallback(() => {
     setSearch('');
@@ -443,8 +451,9 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
     setSeverityFilter('ALL');
     setFromDateTime('');
     setToDateTime('');
+    setEventLimit(DEFAULT_EVENT_LIMIT);
     setStatus({ type: 'info', message: 'Filters cleared.' });
-  }, []);
+  }, [DEFAULT_EVENT_LIMIT]);
 
   const clearSelection = useCallback(() => {
     setSelectedGroups([]);
@@ -1006,7 +1015,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                 <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>Message</p>
                 <Input value={messageFilter} onChange={(event) => setMessageFilter(event.target.value)} placeholder='KQL (e.g. service:api-gateway level:error -requestid:abc)' />
               </div>
-              <div className='grid gap-3 md:grid-cols-3'>
+              <div className='grid gap-3 md:grid-cols-4'>
                 <div className='grid gap-2'>
                   <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>Severity</p>
                   <Select value={severityFilter} onValueChange={(value) => setSeverityFilter(value as 'ALL' | 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE')}>
@@ -1030,6 +1039,21 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                 <div className='grid gap-2'>
                   <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>To</p>
                   <Input type='datetime-local' value={toDateTime} onChange={(event) => setToDateTime(event.target.value)} />
+                </div>
+                <div className='grid gap-2'>
+                  <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>Event Limit</p>
+                  <Select value={eventLimit} onValueChange={setEventLimit}>
+                    <SelectTrigger>
+                      <SelectValue placeholder='Select event limit' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='50'>50</SelectItem>
+                      <SelectItem value='100'>100</SelectItem>
+                      <SelectItem value='200'>200</SelectItem>
+                      <SelectItem value='500'>500</SelectItem>
+                      <SelectItem value='1000'>1000</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className='flex items-center gap-2'>
