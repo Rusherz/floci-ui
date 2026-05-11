@@ -89,7 +89,7 @@ export function VersionUpdateBanner() {
     >
       <AlertTitle>New version available</AlertTitle>
       <AlertDescription className='mt-1 text-xs text-muted-foreground'>
-        Current: {currentVersion} | Latest: {latestVersion}
+        Version: {currentVersion} -&gt; {latestVersion}
       </AlertDescription>
       {latestChanges.length > 0 ? (
         <>
