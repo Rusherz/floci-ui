@@ -3,6 +3,8 @@
 import Link from 'next/link';
 
 import { ServiceHeader } from '@/components/floci/service-header';
+import { useEffect, useState } from 'react';
+import { ListSkeleton } from '@/components/floci/loading';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +16,13 @@ type HomePageProps = {
 };
 
 export function HomePage({ enabledElements }: HomePageProps) {
+  const [showCatalogSkeleton, setShowCatalogSkeleton] = useState(true);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setShowCatalogSkeleton(false), 250);
+    return () => window.clearTimeout(id);
+  }, []);
+
   return (
     <section className='flex min-h-screen min-w-0 flex-col overflow-hidden'>
       <ServiceHeader
@@ -33,18 +42,24 @@ export function HomePage({ enabledElements }: HomePageProps) {
             <p className='text-sm text-muted-foreground'>All available Floci service pages.</p>
           </CardHeader>
           <CardContent className='grid gap-2 sm:grid-cols-2 xl:grid-cols-3'>
-            {enabledElements.map((element) => (
-              <div key={element.slug} className='rounded-md border p-3'>
-                <div className='mb-2 flex items-center justify-between gap-2'>
-                  <p className='text-sm font-medium'>{element.label}</p>
-                  <Badge variant='secondary'>Live</Badge>
-                </div>
-                <p className='mb-3 text-xs text-muted-foreground'>{element.description}</p>
-                <Link href={`/${element.slug}`} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-full')}>
-                  Open
-                </Link>
+            {showCatalogSkeleton ? (
+              <div className='sm:col-span-2 xl:col-span-3'>
+                <ListSkeleton items={9} inline />
               </div>
-            ))}
+            ) : (
+              enabledElements.map((element) => (
+                <div key={element.slug} className='rounded-md border p-3'>
+                  <div className='mb-2 flex items-center justify-between gap-2'>
+                    <p className='text-sm font-medium'>{element.label}</p>
+                    <Badge variant='secondary'>Live</Badge>
+                  </div>
+                  <p className='mb-3 text-xs text-muted-foreground'>{element.description}</p>
+                  <Link href={`/${element.slug}`} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-full')}>
+                    Open
+                  </Link>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </section>

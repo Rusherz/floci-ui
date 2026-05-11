@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { DetailSkeleton, ListSkeleton } from '@/components/floci/loading';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { ServiceShell } from '@/components/floci/service-shell';
@@ -39,6 +40,8 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
   const [billingMode, setBillingMode] = useState<'PAY_PER_REQUEST' | 'PROVISIONED'>('PAY_PER_REQUEST');
   const [readCapacityUnits, setReadCapacityUnits] = useState('5');
   const [writeCapacityUnits, setWriteCapacityUnits] = useState('5');
+  const [hasLoadedTables, setHasLoadedTables] = useState(false);
+  const [hasLoadedItems, setHasLoadedItems] = useState(false);
 
   const loadTables = useCallback(async () => {
     setLoading(true);
@@ -52,6 +55,7 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
         return nextTables[0]?.name || '';
       });
       setStatus({ type: 'info', message: `Loaded ${nextTables.length} table(s).` });
+      setHasLoadedTables(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load DynamoDB tables' });
     } finally {
@@ -72,6 +76,7 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
         const [nextDescription, nextItems] = await Promise.all([api.describeDynamoTable(tableName), api.scanDynamoTable(tableName, 25)]);
         setDescription(nextDescription);
         setItems(nextItems);
+        setHasLoadedItems(true);
       } catch (error) {
         setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load table details' });
       } finally {
@@ -177,6 +182,8 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
     },
     [api, billingMode, partitionKey, readCapacityUnits, refreshTablesOptimistically, sortKey, writeCapacityUnits]
   );
+  const isInitialTablesLoading = loading && !hasLoadedTables;
+  const isInitialItemsLoading = itemsLoading && !hasLoadedItems;
 
   return (
     <ServiceShell
@@ -201,7 +208,9 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
                 </div>
               </CardHeader>
               <CardContent className='xl:min-h-0 xl:flex-1'>
-                {!filteredTables.length ? (
+                {isInitialTablesLoading ? (
+                  <ListSkeleton items={8} inline />
+                ) : !filteredTables.length ? (
                   <p className='text-sm text-muted-foreground'>No tables found.</p>
                 ) : (
                   <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -246,7 +255,7 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
                     </Badge>
                   </div>
 
-                  {itemsLoading ? <p className='text-sm text-muted-foreground'>Loading items...</p> : <ScrollableCodeBlock content={JSON.stringify(items, null, 2)} fillContainer />}
+                  {isInitialItemsLoading ? <DetailSkeleton lines={10} /> : <ScrollableCodeBlock content={JSON.stringify(items, null, 2)} fillContainer />}
                 </CardContent>
               </Card>
 
@@ -255,7 +264,9 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
                   <CardTitle className='text-base'>Table Detail</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {description ? (
+                  {isInitialItemsLoading ? (
+                    <DetailSkeleton lines={8} />
+                  ) : description ? (
                     <ScrollableCodeBlock content={JSON.stringify(description, null, 2)} minHeightClassName='min-h-[140px]' maxHeightClassName='max-h-[28vh]' />
                   ) : (
                     <p className='text-sm text-muted-foreground'>Select a table.</p>

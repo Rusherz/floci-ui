@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { DetailSkeleton, ListSkeleton, PanelSkeleton } from '@/components/floci/loading';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
@@ -37,6 +38,8 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
   const [definition, setDefinition] = useState(
     '{\n  "Comment": "Hello world",\n  "StartAt": "Done",\n  "States": {\n    "Done": { "Type": "Succeed" }\n  }\n}'
   );
+  const [hasLoadedStateMachines, setHasLoadedStateMachines] = useState(false);
+  const [hasLoadedExecutions, setHasLoadedExecutions] = useState(false);
 
   const loadStateMachines = useCallback(async () => {
     setLoading(true);
@@ -45,6 +48,7 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
       setStateMachines(next);
       setSelectedArn((current) => (current && next.some((sm) => sm.arn === current) ? current : next[0]?.arn || ''));
       setStatus({ type: 'info', message: `Loaded ${next.length} state machine(s).` });
+      setHasLoadedStateMachines(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load state machines' });
     } finally {
@@ -61,6 +65,7 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
     try {
       const next = await api.listStepFunctionsExecutions(selectedArn);
       setExecutions(next);
+      setHasLoadedExecutions(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load executions' });
     }
@@ -75,6 +80,8 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
   }, [loadExecutions]);
 
   const filtered = useMemo(() => filterBySearch(stateMachines, search, (machine) => machine.name), [search, stateMachines]);
+  const isInitialStateMachinesLoading = loading && !hasLoadedStateMachines;
+  const isInitialExecutionsLoading = loading && !hasLoadedExecutions;
 
   const refreshStateMachinesOptimistically = useOptimisticCreateRefresh<StepFunctionStateMachineSummary>({
     upsert: (machine) => {
@@ -169,7 +176,9 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
-          {!filtered.length ? (
+          {isInitialStateMachinesLoading ? (
+            <ListSkeleton items={8} inline />
+          ) : !filtered.length ? (
             <p className='text-sm text-muted-foreground'>No state machines found.</p>
           ) : (
             <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -198,7 +207,7 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
             <CardTitle className='text-base'>Executions</CardTitle>
           </CardHeader>
           <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
-            <ScrollableCodeBlock content={JSON.stringify(executions, null, 2) || '[]'} fillContainer />
+            {isInitialExecutionsLoading ? <DetailSkeleton lines={10} /> : <ScrollableCodeBlock content={JSON.stringify(executions, null, 2) || '[]'} fillContainer />}
           </CardContent>
         </Card>
 
@@ -207,10 +216,16 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
             <CardTitle className='text-base'>Start Execution</CardTitle>
           </CardHeader>
           <CardContent className='grid gap-3'>
-            <BoundedTextarea value={executionInput} onChange={(event) => setExecutionInput(event.target.value)} className='font-mono' minHeightClassName='min-h-[130px]' maxHeightClassName='max-h-[34vh]' />
-            <Button onClick={() => void startExecution()} disabled={loading || !selectedArn}>
-              Start Execution
-            </Button>
+            {isInitialStateMachinesLoading ? (
+              <PanelSkeleton rows={4} />
+            ) : (
+              <>
+                <BoundedTextarea value={executionInput} onChange={(event) => setExecutionInput(event.target.value)} className='font-mono' minHeightClassName='min-h-[130px]' maxHeightClassName='max-h-[34vh]' />
+                <Button onClick={() => void startExecution()} disabled={loading || !selectedArn}>
+                  Start Execution
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       </ServicePanelColumn>

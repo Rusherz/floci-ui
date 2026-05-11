@@ -5,6 +5,7 @@ import { Pencil, Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { DetailSkeleton, ListSkeleton } from '@/components/floci/loading';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
@@ -96,6 +97,9 @@ export default function SsmPage({ enabledElements }: { enabledElements: FlociEle
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<ServiceStatus>(EMPTY_SERVICE_STATUS);
   const [loading, setLoading] = useState(false);
+  const [valueLoading, setValueLoading] = useState(false);
+  const [hasLoadedParameters, setHasLoadedParameters] = useState(false);
+  const [hasLoadedValue, setHasLoadedValue] = useState(false);
 
   const selectedParameter = useMemo(() => parameters.find((parameter) => parameter.name === selectedName) || null, [parameters, selectedName]);
 
@@ -106,6 +110,7 @@ export default function SsmPage({ enabledElements }: { enabledElements: FlociEle
       setParameters(next);
       setSelectedName((current) => (current && next.some((p) => p.name === current) ? current : next[0]?.name || ''));
       setStatus({ type: 'info', message: `Loaded ${next.length} parameter(s).` });
+      setHasLoadedParameters(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load parameters' });
     } finally {
@@ -124,16 +129,22 @@ export default function SsmPage({ enabledElements }: { enabledElements: FlociEle
     }
 
     void (async () => {
+      setValueLoading(true);
       try {
         const value = await api.getSsmParameter(selectedName);
         setSelectedValue(value);
+        setHasLoadedValue(true);
       } catch (error) {
         setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to get parameter value' });
+      } finally {
+        setValueLoading(false);
       }
     })();
   }, [api, selectedName]);
 
   const filtered = useMemo(() => filterBySearch(parameters, search, (parameter) => parameter.name), [parameters, search]);
+  const isInitialParametersLoading = loading && !hasLoadedParameters;
+  const isInitialValueLoading = valueLoading && !hasLoadedValue;
 
   const createParameter = useCallback(async (nameRaw: string) => {
     const name = nameRaw.trim();
@@ -247,7 +258,9 @@ export default function SsmPage({ enabledElements }: { enabledElements: FlociEle
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
-          {!filtered.length ? (
+          {isInitialParametersLoading ? (
+            <ListSkeleton items={8} inline />
+          ) : !filtered.length ? (
             <p className='text-sm text-muted-foreground'>No parameters found.</p>
           ) : (
             <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -291,7 +304,11 @@ export default function SsmPage({ enabledElements }: { enabledElements: FlociEle
             <CardTitle className='text-base'>Parameter Value</CardTitle>
           </CardHeader>
           <CardContent className='min-h-0 lg:flex-1'>
-            <BoundedTextarea value={selectedValue} onChange={(event) => setSelectedValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[220px]' maxHeightClassName='max-h-[56vh]' disabled />
+            {isInitialValueLoading ? (
+              <DetailSkeleton lines={10} />
+            ) : (
+              <BoundedTextarea value={selectedValue} onChange={(event) => setSelectedValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[220px]' maxHeightClassName='max-h-[56vh]' disabled />
+            )}
           </CardContent>
         </Card>
       </ServicePanelColumn>

@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { ListSkeleton, PanelSkeleton } from '@/components/floci/loading';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,8 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [hasLoadedTopics, setHasLoadedTopics] = useState(false);
+  const [hasLoadedSubscriptions, setHasLoadedSubscriptions] = useState(false);
 
   const selectedTopic = topics.find((topic) => topic.arn === selectedTopicArn) || null;
 
@@ -48,6 +51,7 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
         return nextTopics[0]?.arn || '';
       });
       setStatus({ type: 'info', message: `Loaded ${nextTopics.length} topic(s).` });
+      setHasLoadedTopics(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load SNS topics' });
     } finally {
@@ -66,6 +70,7 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
       try {
         const nextSubscriptions = await api.loadSnsSubscriptionsByTopic(topicArn);
         setSubscriptions(nextSubscriptions);
+        setHasLoadedSubscriptions(true);
       } catch (error) {
         setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load subscriptions' });
       } finally {
@@ -84,6 +89,8 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
   }, [loadSubscriptions, selectedTopicArn]);
 
   const filteredTopics = useMemo(() => filterBySearch(topics, search, (topic) => topic.name), [search, topics]);
+  const isInitialTopicsLoading = loading && !hasLoadedTopics;
+  const isInitialSubscriptionsLoading = subscriptionsLoading && !hasLoadedSubscriptions;
 
   const refreshTopicsOptimistically = useOptimisticCreateRefresh<SnsTopic>({
     upsert: (topic) => {
@@ -161,7 +168,9 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
                 </div>
               </CardHeader>
               <CardContent className='xl:min-h-0 xl:flex-1'>
-                {!filteredTopics.length ? (
+                {isInitialTopicsLoading ? (
+                  <ListSkeleton items={8} inline />
+                ) : !filteredTopics.length ? (
                   <p className='text-sm text-muted-foreground'>No topics found.</p>
                 ) : (
                   <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -192,8 +201,8 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
                 <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
                   {!selectedTopic ? (
                     <p className='text-sm text-muted-foreground'>Select a topic.</p>
-                  ) : subscriptionsLoading ? (
-                    <p className='text-sm text-muted-foreground'>Loading subscriptions...</p>
+                  ) : isInitialSubscriptionsLoading ? (
+                    <ListSkeleton items={5} inline />
                   ) : !subscriptions.length ? (
                     <p className='text-sm text-muted-foreground'>No subscriptions for this topic.</p>
                   ) : (
@@ -214,17 +223,23 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
                   <CardTitle className='text-base'>Publish Message</CardTitle>
                 </CardHeader>
                 <CardContent className='grid gap-3'>
-                  <Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder='Subject (optional)' />
-                  <BoundedTextarea
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
-                    placeholder='Message payload'
-                    minHeightClassName='min-h-[120px]'
-                    maxHeightClassName='max-h-[36vh]'
-                  />
-                  <Button onClick={() => void publishMessage()} disabled={loading || !selectedTopicArn || !message.trim()}>
-                    Publish
-                  </Button>
+                  {isInitialTopicsLoading ? (
+                    <PanelSkeleton rows={4} />
+                  ) : (
+                    <>
+                      <Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder='Subject (optional)' />
+                      <BoundedTextarea
+                        value={message}
+                        onChange={(event) => setMessage(event.target.value)}
+                        placeholder='Message payload'
+                        minHeightClassName='min-h-[120px]'
+                        maxHeightClassName='max-h-[36vh]'
+                      />
+                      <Button onClick={() => void publishMessage()} disabled={loading || !selectedTopicArn || !message.trim()}>
+                        Publish
+                      </Button>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </ServicePanelColumn>

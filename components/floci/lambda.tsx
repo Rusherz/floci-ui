@@ -6,6 +6,7 @@ import { Pencil, Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { DetailSkeleton, ListSkeleton, PanelSkeleton } from '@/components/floci/loading';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { ServiceShell } from '@/components/floci/service-shell';
@@ -82,6 +83,7 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
   const [editorError, setEditorError] = useState('');
   const [savingCode, setSavingCode] = useState(false);
   const [loadingCode, setLoadingCode] = useState(false);
+  const [hasLoadedFunctions, setHasLoadedFunctions] = useState(false);
 
   const loadFunctions = useCallback(async () => {
     setLoading(true);
@@ -95,6 +97,7 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
         return nextFunctions[0]?.name || '';
       });
       setStatus({ type: 'info', message: `Loaded ${nextFunctions.length} function(s).` });
+      setHasLoadedFunctions(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load Lambda functions' });
     } finally {
@@ -107,6 +110,7 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
   }, [loadFunctions]);
 
   const filteredFunctions = useMemo(() => filterBySearch(functions, search, (fn) => fn.name), [functions, search]);
+  const isInitialFunctionsLoading = loading && !hasLoadedFunctions;
 
   const refreshFunctionsOptimistically = useOptimisticCreateRefresh<LambdaFunctionSummary>({
     upsert: (fn) => {
@@ -384,7 +388,9 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
-          {!filteredFunctions.length ? (
+          {isInitialFunctionsLoading ? (
+            <ListSkeleton items={8} inline />
+          ) : !filteredFunctions.length ? (
             <p className='text-sm text-muted-foreground'>No functions found.</p>
           ) : (
             <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -433,17 +439,23 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
                 </div>
               </CardHeader>
               <CardContent className='grid min-h-0 gap-3 lg:flex-1 lg:grid-rows-[auto_minmax(160px,1fr)]'>
-                <div className='rounded-md border bg-muted p-3 text-xs text-muted-foreground'>
-                  {selectedFunction ? `${selectedFunction.name} | ${selectedFunction.runtime} | ${selectedFunction.handler}` : 'Select a function.'}
-                </div>
-                <BoundedTextarea
-                  value={payload}
-                  onChange={(event) => setPayload(event.target.value)}
-                  className='font-mono'
-                  minHeightClassName='min-h-[140px]'
-                  maxHeightClassName='max-h-[38vh]'
-                  placeholder='JSON payload'
-                />
+                {isInitialFunctionsLoading ? (
+                  <PanelSkeleton rows={5} />
+                ) : (
+                  <>
+                    <div className='rounded-md border bg-muted p-3 text-xs text-muted-foreground'>
+                      {selectedFunction ? `${selectedFunction.name} | ${selectedFunction.runtime} | ${selectedFunction.handler}` : 'Select a function.'}
+                    </div>
+                    <BoundedTextarea
+                      value={payload}
+                      onChange={(event) => setPayload(event.target.value)}
+                      className='font-mono'
+                      minHeightClassName='min-h-[140px]'
+                      maxHeightClassName='max-h-[38vh]'
+                      placeholder='JSON payload'
+                    />
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -452,7 +464,7 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
                 <CardTitle className='text-base'>Invocation Result</CardTitle>
               </CardHeader>
               <CardContent className='min-h-0 lg:flex-1'>
-                <ScrollableCodeBlock content={invokeOutput ? JSON.stringify(invokeOutput, null, 2) : 'Invoke a function to view output.'} fillContainer />
+                {isInitialFunctionsLoading ? <DetailSkeleton lines={8} /> : <ScrollableCodeBlock content={invokeOutput ? JSON.stringify(invokeOutput, null, 2) : 'Invoke a function to view output.'} fillContainer />}
               </CardContent>
             </Card>
 
@@ -461,7 +473,7 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
                 <CardTitle className='text-base'>Logs</CardTitle>
               </CardHeader>
               <CardContent className='min-h-0 lg:flex-1'>
-                <ScrollableCodeBlock content={invokeLogs || 'Invoke a function to view log output.'} fillContainer />
+                {isInitialFunctionsLoading ? <DetailSkeleton lines={8} /> : <ScrollableCodeBlock content={invokeLogs || 'Invoke a function to view log output.'} fillContainer />}
               </CardContent>
             </Card>
           </>
@@ -493,7 +505,9 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
             <CardContent className='grid min-h-0 flex-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)]'>
               <div className='min-h-0 rounded-md border p-2'>
                 <p className='mb-2 text-xs font-medium text-muted-foreground'>Files</p>
-                {!entries.length ? (
+                {isInitialFunctionsLoading ? (
+                  <ListSkeleton items={6} inline />
+                ) : !entries.length ? (
                   <p className='text-xs text-muted-foreground'>Upload a function ZIP to edit.</p>
                 ) : (
                   <div className='max-h-[60vh] space-y-1 overflow-auto pr-1'>

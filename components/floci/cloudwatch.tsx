@@ -6,6 +6,8 @@ import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
 import { ServiceShell } from '@/components/floci/service-shell';
+import { DetailSkeleton } from '@/components/floci/loading/detail-skeleton';
+import { ListSkeleton } from '@/components/floci/loading/list-skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -193,6 +195,8 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
   const [selectedEventKey, setSelectedEventKey] = useState('');
   const [status, setStatus] = useState<ServiceStatus>(EMPTY_SERVICE_STATUS);
   const [loading, setLoading] = useState(false);
+  const [initialGroupsLoaded, setInitialGroupsLoaded] = useState(false);
+  const [initialEventsLoaded, setInitialEventsLoaded] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
@@ -221,6 +225,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
     try {
       const next = await api.listLogGroups();
       setGroups(next);
+      setInitialGroupsLoaded(true);
       setSelectedGroups((current) => {
         const existing = current.filter((groupName) => next.some((group) => group.logGroupName === groupName));
         if (existing.length > 0) {
@@ -427,6 +432,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
         setLastFilterDebug('');
       }
     } finally {
+      setInitialEventsLoaded(true);
       if (!silent) setLoading(false);
     }
   }, [api, effectiveGroupNames, fromDateTime, messageFilter, normalizedMessageFilter, toDateTime, toEpochMs]);
@@ -927,7 +933,9 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           />
         </CardHeader>
         <CardContent>
-          {!filtered.length ? (
+          {!initialGroupsLoaded ? (
+            <ListSkeleton items={6} inline />
+          ) : !filtered.length ? (
             <p className='text-sm text-muted-foreground'>No log groups found.</p>
           ) : (
             <div
@@ -1052,7 +1060,9 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
               </div>
             </CardHeader>
             <CardContent className='min-h-0'>
-              {!filteredEvents.length ? (
+              {!initialEventsLoaded ? (
+                <ListSkeleton items={6} inline />
+              ) : !filteredEvents.length ? (
                 <div className='space-y-2'>
                   <p className='text-sm text-muted-foreground'>No events matched current filters.</p>
                   {filterDiagnostic ? <p className='text-xs text-muted-foreground'>{filterDiagnostic}</p> : null}
@@ -1148,6 +1158,9 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                   </dl>
                 </div>
               ) : null}
+              {!initialEventsLoaded ? (
+                <DetailSkeleton lines={10} />
+              ) : (
               <CodeEditor
                 value={
                   selectedEvent
@@ -1179,6 +1192,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                 height='100%'
                 minHeight='220px'
               />
+              )}
           </CardContent>
         </Card>
         </div>

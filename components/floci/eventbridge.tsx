@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { ListSkeleton, PanelSkeleton } from '@/components/floci/loading';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,8 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
   const [rulePattern, setRulePattern] = useState('{\n  "source": ["floci.ui"]\n}');
   const [ruleMode, setRuleMode] = useState<'pattern' | 'schedule'>('pattern');
   const [scheduleExpression, setScheduleExpression] = useState('rate(5 minutes)');
+  const [hasLoadedRules, setHasLoadedRules] = useState(false);
+  const [hasLoadedTargets, setHasLoadedTargets] = useState(false);
 
   const loadBuses = useCallback(async () => {
     setLoading(true);
@@ -58,6 +61,7 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
     try {
       const next = await api.listEventRules(selectedBus);
       setRules(next);
+      setHasLoadedRules(true);
       setSelectedRule((current) => (current && next.some((r) => r.name === current) ? current : next[0]?.name || ''));
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load rules' });
@@ -74,6 +78,7 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
     try {
       const next = await api.listEventTargetsByRule(selectedRule, selectedBus);
       setTargets(next);
+      setHasLoadedTargets(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load targets' });
     }
@@ -92,6 +97,8 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
   }, [loadTargets]);
 
   const filtered = useMemo(() => filterBySearch(rules, search, (rule) => rule.name), [rules, search]);
+  const isInitialRulesLoading = loading && !hasLoadedRules;
+  const isInitialTargetsLoading = loading && !hasLoadedTargets;
 
   const refreshBusOptimistically = useOptimisticCreateRefresh<string>({
     upsert: (busName) => {
@@ -225,7 +232,9 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
-          {!filtered.length ? (
+          {isInitialRulesLoading ? (
+            <ListSkeleton items={8} inline />
+          ) : !filtered.length ? (
             <p className='text-sm text-muted-foreground'>No rules found.</p>
           ) : (
             <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -255,7 +264,9 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
           </CardHeader>
           <CardContent className='space-y-3'>
             <Input value={selectedBus} onChange={(event) => setSelectedBus(event.target.value)} placeholder='Event bus name' />
-            {!targets.length ? (
+            {isInitialTargetsLoading ? (
+              <ListSkeleton items={4} inline />
+            ) : !targets.length ? (
               <p className='text-sm text-muted-foreground'>No targets for selected rule.</p>
             ) : (
               <div className='space-y-2'>
@@ -275,12 +286,18 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
             <CardTitle className='text-base'>Send Test Event</CardTitle>
           </CardHeader>
           <CardContent className='grid gap-3'>
-            <Input value={source} onChange={(event) => setSource(event.target.value)} placeholder='Source' />
-            <Input value={detailType} onChange={(event) => setDetailType(event.target.value)} placeholder='Detail type' />
-            <BoundedTextarea value={detail} onChange={(event) => setDetail(event.target.value)} className='font-mono' minHeightClassName='min-h-[120px]' maxHeightClassName='max-h-[32vh]' />
-            <Button onClick={() => void sendTest()} disabled={loading || !selectedBus.trim()}>
-              Send Event
-            </Button>
+            {isInitialRulesLoading ? (
+              <PanelSkeleton rows={4} />
+            ) : (
+              <>
+                <Input value={source} onChange={(event) => setSource(event.target.value)} placeholder='Source' />
+                <Input value={detailType} onChange={(event) => setDetailType(event.target.value)} placeholder='Detail type' />
+                <BoundedTextarea value={detail} onChange={(event) => setDetail(event.target.value)} className='font-mono' minHeightClassName='min-h-[120px]' maxHeightClassName='max-h-[32vh]' />
+                <Button onClick={() => void sendTest()} disabled={loading || !selectedBus.trim()}>
+                  Send Event
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       </ServicePanelColumn>

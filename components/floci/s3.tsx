@@ -5,6 +5,7 @@ import { ExternalLink, Folder, Plus, Trash2 } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { DetailSkeleton, ListSkeleton } from '@/components/floci/loading';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
@@ -70,6 +71,7 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
     acl: 'private',
     objectLockEnabled: false,
   });
+  const [hasLoadedInitial, setHasLoadedInitial] = useState(false);
 
   const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
   const lastObjectAnchorRef = useRef<number | null>(null);
@@ -294,6 +296,7 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
         if (!silent) {
           setStatus(`Loaded ${buckets.length} bucket(s).`, 'info');
         }
+        setHasLoadedInitial(true);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : 'Failed to refresh view', 'error');
       } finally {
@@ -664,6 +667,7 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
   const selectedBucket = state.s3.buckets[clampIndex(state.selectedBucket, state.s3.buckets.length)] || null;
   const selectedPrefix = selectedBucket ? state.s3.prefixByBucket[selectedBucket.name] || '' : '';
   const objectMultiSelectActive = selectedObjectKeys.size > 1;
+  const isInitialLoading = state.loading && !hasLoadedInitial;
   const selectedListing = useMemo(
     () =>
       selectedBucket
@@ -893,7 +897,9 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
-          {!state.s3.buckets.length ? (
+          {isInitialLoading ? (
+            <ListSkeleton items={8} inline />
+          ) : !state.s3.buckets.length ? (
             <p className='text-sm text-muted-foreground'>No buckets found.</p>
           ) : (
             <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -951,7 +957,9 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
             </div>
           </CardHeader>
           <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
-            {objectViewModel.loading ? (
+            {isInitialLoading ? (
+              <ListSkeleton items={7} inline />
+            ) : objectViewModel.loading ? (
               <p className='text-sm text-muted-foreground'>Searching...</p>
             ) : !objectViewModel.folders.length && !objectViewModel.files.length ? (
               <p className='text-sm text-muted-foreground'>{objectViewModel.emptyMessage}</p>
@@ -1060,29 +1068,33 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
             </div>
           </CardHeader>
           <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
-            <ScrollableCodeBlock
-              content={
-                !objectMultiSelectActive && selectedBucket && state.s3.selectedObject
-                  ? JSON.stringify(
-                      {
-                        bucket: selectedBucket.name,
-                        object: {
-                          key: state.s3.selectedObject.key,
-                          size: state.s3.selectedObject.size,
-                          lastModified: state.s3.selectedObject.lastModified,
-                          etag: state.s3.selectedObject.etag,
+            {isInitialLoading ? (
+              <DetailSkeleton lines={9} />
+            ) : (
+              <ScrollableCodeBlock
+                content={
+                  !objectMultiSelectActive && selectedBucket && state.s3.selectedObject
+                    ? JSON.stringify(
+                        {
+                          bucket: selectedBucket.name,
+                          object: {
+                            key: state.s3.selectedObject.key,
+                            size: state.s3.selectedObject.size,
+                            lastModified: state.s3.selectedObject.lastModified,
+                            etag: state.s3.selectedObject.etag,
+                          },
+                          objectUrl: api.objectUrl(selectedBucket.name, state.s3.selectedObject.key),
                         },
-                        objectUrl: api.objectUrl(selectedBucket.name, state.s3.selectedObject.key),
-                      },
-                      null,
-                      2
-                    )
-                  : objectMultiSelectActive
-                    ? 'Preview disabled while multi-select is active.'
-                    : 'Select an object.'
-              }
-              fillContainer
-            />
+                        null,
+                        2
+                      )
+                    : objectMultiSelectActive
+                      ? 'Preview disabled while multi-select is active.'
+                      : 'Select an object.'
+                }
+                fillContainer
+              />
+            )}
           </CardContent>
         </Card>
       </ServicePanelColumn>

@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 
 import { BoundedTextarea } from '@/components/floci/bounded-textarea';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { DetailSkeleton, ListSkeleton } from '@/components/floci/loading';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
@@ -33,6 +34,9 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
   const [createError, setCreateError] = useState('');
   const [createDescription, setCreateDescription] = useState('');
   const [creating, setCreating] = useState(false);
+  const [hasLoadedSecrets, setHasLoadedSecrets] = useState(false);
+  const [selectedLoading, setSelectedLoading] = useState(false);
+  const [hasLoadedSelected, setHasLoadedSelected] = useState(false);
 
   const loadSecrets = useCallback(async () => {
     setLoading(true);
@@ -41,6 +45,7 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
       setSecrets(next);
       setSelectedSecretId((current) => (current && next.some((secret) => secret.arn === current || secret.name === current) ? current : next[0]?.arn || next[0]?.name || ''));
       setStatus({ type: 'info', message: `Loaded ${next.length} secret(s).` });
+      setHasLoadedSecrets(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load secrets' });
     } finally {
@@ -55,12 +60,16 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
       return;
     }
 
+    setSelectedLoading(true);
     try {
       const [nextDetails, nextValue] = await Promise.all([api.describeSecret(selectedSecretId), api.getSecretValue(selectedSecretId)]);
       setDetails(nextDetails);
       setValue(nextValue);
+      setHasLoadedSelected(true);
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load secret details' });
+    } finally {
+      setSelectedLoading(false);
     }
   }, [api, selectedSecretId]);
 
@@ -73,6 +82,8 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
   }, [loadSelected]);
 
   const filtered = useMemo(() => filterBySearch(secrets, search, (secret) => secret.name), [search, secrets]);
+  const isInitialSecretsLoading = loading && !hasLoadedSecrets;
+  const isInitialSelectedLoading = selectedLoading && !hasLoadedSelected;
 
   const refreshSecretsOptimistically = useOptimisticCreateRefresh<SecretSummary>({
     upsert: (secret) => {
@@ -154,7 +165,9 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
-          {!filtered.length ? (
+          {isInitialSecretsLoading ? (
+            <ListSkeleton items={8} inline />
+          ) : !filtered.length ? (
             <p className='text-sm text-muted-foreground'>No secrets found.</p>
           ) : (
             <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -184,7 +197,7 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
             <CardTitle className='text-base'>Secret Detail</CardTitle>
           </CardHeader>
           <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
-            <ScrollableCodeBlock content={JSON.stringify(details, null, 2) || 'Select a secret.'} fillContainer />
+            {isInitialSelectedLoading ? <DetailSkeleton lines={10} /> : <ScrollableCodeBlock content={JSON.stringify(details, null, 2) || 'Select a secret.'} fillContainer />}
           </CardContent>
         </Card>
 
@@ -193,7 +206,11 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
             <CardTitle className='text-base'>Secret Value</CardTitle>
           </CardHeader>
           <CardContent className='grid gap-3'>
-            <BoundedTextarea value={value} onChange={(event) => setValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[150px]' maxHeightClassName='max-h-[34vh]' />
+            {isInitialSelectedLoading ? (
+              <DetailSkeleton lines={7} />
+            ) : (
+              <BoundedTextarea value={value} onChange={(event) => setValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[150px]' maxHeightClassName='max-h-[34vh]' />
+            )}
             <Button onClick={() => void saveValue()} disabled={loading || !selectedSecretId}>
               Put Secret Value
             </Button>

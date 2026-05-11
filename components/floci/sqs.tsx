@@ -5,6 +5,7 @@ import { Plus, Trash2 } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
+import { DetailSkeleton, ListSkeleton } from '@/components/floci/loading';
 import { ScrollableCodeBlock } from '@/components/floci/scrollable-code-block';
 import { ServicePanelColumn } from '@/components/floci/service-panel-column';
 import { ServiceShell } from '@/components/floci/service-shell';
@@ -64,6 +65,7 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
     maximumMessageSize: '262144',
     contentBasedDeduplication: false,
   });
+  const [hasLoadedInitial, setHasLoadedInitial] = useState(false);
 
   const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
   const lastMessageAnchorRef = useRef<number | null>(null);
@@ -151,6 +153,7 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
         if (!silent) {
           setStatus(`Loaded ${queues.length} queue(s).`, 'info');
         }
+        setHasLoadedInitial(true);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : 'Failed to refresh view', 'error');
       } finally {
@@ -389,6 +392,7 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
   const selectedQueueMessages = selectedQueue ? state.sqs.messagesByQueue[selectedQueue.name] || [] : [];
   const selectedMessage = selectedQueueMessages[clampIndex(state.selectedMessage, selectedQueueMessages.length)] || null;
   const messageMultiSelectActive = selectedMessageKeys.size > 1;
+  const isInitialLoading = state.loading && !hasLoadedInitial;
 
   useEffect(() => {
     const saved = loadUiState(STORAGE_KEYS.uiState);
@@ -501,7 +505,9 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
           </div>
         </CardHeader>
         <CardContent className='xl:min-h-0 xl:flex-1'>
-          {!filteredQueues.length ? (
+          {isInitialLoading ? (
+            <ListSkeleton items={8} inline />
+          ) : !filteredQueues.length ? (
             <p className='text-sm text-muted-foreground'>No queues found.</p>
           ) : (
             <div className='flex max-h-[560px] flex-col gap-2 overflow-auto pr-1 xl:h-full xl:max-h-none xl:min-h-0'>
@@ -535,7 +541,9 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
             </div>
           </CardHeader>
           <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
-            {!selectedQueue || !selectedQueueMessages.length ? (
+            {isInitialLoading ? (
+              <ListSkeleton items={6} inline />
+            ) : !selectedQueue || !selectedQueueMessages.length ? (
               <p className='text-sm text-muted-foreground'>No messages available.</p>
             ) : (
               <div className='flex h-full min-h-0 flex-col gap-2 overflow-auto pr-1'>
@@ -584,24 +592,28 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
             </div>
           </CardHeader>
           <CardContent className='min-h-0 lg:flex-1 lg:overflow-hidden'>
-            <ScrollableCodeBlock
-              content={
-                !messageMultiSelectActive && selectedQueue && selectedMessage
-                  ? JSON.stringify(
-                      {
-                        queue: selectedQueue.name,
-                        queueUrl: selectedQueue.queueUrl || extractQueueUrl(selectedQueue.name),
-                        message: selectedMessage,
-                      },
-                      null,
-                      2
-                    )
-                  : messageMultiSelectActive
-                    ? 'Preview disabled while multi-select is active.'
-                    : 'Select a message.'
-              }
-              fillContainer
-            />
+            {isInitialLoading ? (
+              <DetailSkeleton lines={9} />
+            ) : (
+              <ScrollableCodeBlock
+                content={
+                  !messageMultiSelectActive && selectedQueue && selectedMessage
+                    ? JSON.stringify(
+                        {
+                          queue: selectedQueue.name,
+                          queueUrl: selectedQueue.queueUrl || extractQueueUrl(selectedQueue.name),
+                          message: selectedMessage,
+                        },
+                        null,
+                        2
+                      )
+                    : messageMultiSelectActive
+                      ? 'Preview disabled while multi-select is active.'
+                      : 'Select a message.'
+                }
+                fillContainer
+              />
+            )}
           </CardContent>
         </Card>
       </ServicePanelColumn>
