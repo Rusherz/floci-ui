@@ -1,0 +1,50 @@
+name: Publish Image - Summary
+
+on:
+  workflow_call:
+    inputs:
+      version_image:
+        required: true
+        type: string
+      amd64_arch_image:
+        required: true
+        type: string
+      arm64_arch_image:
+        required: true
+        type: string
+      latest_image:
+        required: true
+        type: string
+      latest_rc_image:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish_summary:
+    name: Publish summary
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Publish image summary
+        shell: bash
+        run: |
+          {
+            echo "## Published Docker image"
+            echo "- Version image: \`${{ inputs.version_image }}\`"
+            echo "- Arch images:"
+            echo "  - \`${{ inputs.amd64_arch_image }}\`"
+            echo "  - \`${{ inputs.arm64_arch_image }}\`"
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              echo "- Latest image: \`${{ inputs.latest_image }}\`"
+              echo "- Latest RC image: not promoted (main build)"
+            elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+              echo "- Latest image: not promoted (dev build)"
+              echo "- Latest RC image: \`${{ inputs.latest_rc_image }}\`"
+            else
+              echo "- Latest image: not promoted (ref: \`${{ github.ref }}\`)"
+              echo "- Latest RC image: not promoted (ref: \`${{ github.ref }}\`)"
+            fi
+            echo "- Platforms: \`linux/amd64, linux/arm64\`"
+          } >> "$GITHUB_STEP_SUMMARY"

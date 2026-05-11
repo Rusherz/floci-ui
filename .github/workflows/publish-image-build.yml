@@ -1,0 +1,338 @@
+name: Publish Image - Build Pipeline
+
+on:
+  workflow_call:
+    outputs:
+      image:
+        description: Base container image repo
+        value: ${{ jobs.resolve_image_version.outputs.image }}
+      version_tag:
+        description: Resolved semver-safe version tag
+        value: ${{ jobs.resolve_image_version.outputs.version_tag }}
+      version_image:
+        description: Full version image reference
+        value: ${{ jobs.resolve_image_version.outputs.version_image }}
+      latest_image:
+        description: Latest stable image reference
+        value: ${{ jobs.resolve_image_version.outputs.latest_image }}
+      latest_rc_image:
+        description: Latest RC image reference
+        value: ${{ jobs.resolve_image_version.outputs.latest_rc_image }}
+      manifest_url:
+        description: Version manifest URL for this ref
+        value: ${{ jobs.resolve_image_version.outputs.manifest_url }}
+      amd64_arch_image:
+        description: Arch-specific amd64 image reference
+        value: ${{ jobs.build_and_push_amd64_image.outputs.arch_image }}
+      arm64_arch_image:
+        description: Arch-specific arm64 image reference
+        value: ${{ jobs.build_and_push_arm64_image.outputs.arch_image }}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  FLOCI_IMAGE: hectorvent/floci@sha256:c969cb48fcfae0eff3f4a4647b7772cd975e633cae7468e45abaf2d2eae18558
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium
+
+      - name: Start Floci
+        run: |
+          docker rm -f floci-e2e >/dev/null 2>&1 || true
+          docker run -d \
+            --name floci-e2e \
+            --user root \
+            -p 4566:4566 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            "${FLOCI_IMAGE}"
+          for i in {1..60}; do
+            if curl -sf http://localhost:4566/ >/dev/null; then
+              echo "Floci is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Floci did not become ready in time"
+          docker logs floci-e2e || true
+          exit 1
+
+      - name: Run lint
+        env:
+          RUN_FLOCI_E2E: '1'
+          NEXT_PUBLIC_FLOCI_ENABLED_SERVICES: '*'
+        run: npm run lint
+
+      - name: Run Playwright e2e
+        env:
+          RUN_FLOCI_E2E: '1'
+          NEXT_PUBLIC_FLOCI_ENABLED_SERVICES: '*'
+        run: npm run test:e2e
+
+      - name: Stop Floci
+        if: always()
+        run: |
+          docker logs floci-e2e || true
+          docker rm -f floci-e2e || true
+
+  resolve_image_version:
+    name: Resolve image version
+    runs-on: [self-hosted, linux]
+    needs: [checks]
+    outputs:
+      image: ${{ steps.image_refs.outputs.image }}
+      version_tag: ${{ steps.image_refs.outputs.version_tag }}
+      version_image: ${{ steps.image_refs.outputs.version_image }}
+      latest_image: ${{ steps.image_refs.outputs.latest_image }}
+      latest_rc_image: ${{ steps.image_refs.outputs.latest_rc_image }}
+      manifest_url: ${{ steps.manifest_url.outputs.manifest_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Execute GitVersion (Docker)
+        id: gitversion
+        shell: bash
+        run: |
+          FULL_SEMVER="$(docker run --rm -v "$PWD:/repo" gittools/gitversion:6.0.5-alpine.3.20-6.0 /repo /showvariable FullSemVer)"
+          echo "fullSemVer=$FULL_SEMVER" >> "$GITHUB_OUTPUT"
+
+      - name: Normalize image name
+        id: image
+        shell: bash
+        run: |
+          IMAGE_REPO_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          echo "repo=$IMAGE_REPO_LC" >> "$GITHUB_OUTPUT"
+
+      - name: Derive Docker tag from fullSemVer
+        id: version
+        shell: bash
+        run: |
+          SEMVER='${{ steps.gitversion.outputs.fullSemVer }}'
+          SEMVER_SAFE="${SEMVER//+/.}"
+          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+          echo "semver_safe=$SEMVER_SAFE" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Docker image refs
+        id: image_refs
+        shell: bash
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ steps.image.outputs.repo }}"
+          VERSION_TAG='${{ steps.version.outputs.semver_safe }}'
+          VERSION_IMAGE="$IMAGE:$VERSION_TAG"
+          LATEST_IMAGE="$IMAGE:latest"
+          LATEST_RC_IMAGE="$IMAGE:latest-rc"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
+          echo "version_image=$VERSION_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "latest_image=$LATEST_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "latest_rc_image=$LATEST_RC_IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve manifest URL
+        id: manifest_url
+        shell: bash
+        run: |
+          BASE_URL='${{ vars.PAGES_BASE_URL }}'
+          BASE_URL="${BASE_URL%/}"
+          if [[ -z "$BASE_URL" ]]; then
+            echo "PAGES_BASE_URL is required" >&2
+            exit 1
+          fi
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "manifest_url=$BASE_URL/version.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "manifest_url=$BASE_URL/dev/version.json" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish resolved image refs
+        shell: bash
+        run: |
+          {
+            echo "## Resolved image refs"
+            echo "- Image: \`${{ steps.image_refs.outputs.image }}\`"
+            echo "- Version tag: \`${{ steps.image_refs.outputs.version_tag }}\`"
+            echo "- Version image: \`${{ steps.image_refs.outputs.version_image }}\`"
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              echo "- Latest image: \`${{ steps.image_refs.outputs.latest_image }}\`"
+            else
+              echo "- Latest RC image: \`${{ steps.image_refs.outputs.latest_rc_image }}\`"
+            fi
+            echo "- Manifest URL: \`${{ steps.manifest_url.outputs.manifest_url }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build_and_push_amd64_image:
+    name: Build and push amd64 image
+    runs-on: [self-hosted, linux, amd64]
+    needs: [resolve_image_version]
+    outputs:
+      arch_image: ${{ steps.arch_ref.outputs.arch_image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub (optional)
+        if: ${{ vars.DOCKERHUB_USERNAME != '' && vars.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ vars.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve amd64 image ref
+        id: arch_ref
+        shell: bash
+        run: echo "arch_image=${{ needs.resolve_image_version.outputs.version_image }}-amd64" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push amd64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.arch_ref.outputs.arch_image }}
+          build-args: |
+            NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
+            VERSION_MANIFEST_URL=${{ needs.resolve_image_version.outputs.manifest_url }}
+          cache-from: type=local,src=/home/rusherz/.cache/buildx/floci-ui-amd64
+          cache-to: type=local,dest=/home/rusherz/.cache/buildx/floci-ui-amd64-new,mode=max
+
+      - name: Persist amd64 local buildx cache
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /home/rusherz/.cache/buildx
+          rm -rf /home/rusherz/.cache/buildx/floci-ui-amd64
+          if [ -d /home/rusherz/.cache/buildx/floci-ui-amd64-new ]; then
+            mv /home/rusherz/.cache/buildx/floci-ui-amd64-new /home/rusherz/.cache/buildx/floci-ui-amd64
+          fi
+
+      - name: Verify amd64 image manifest
+        shell: bash
+        run: docker buildx imagetools inspect "${{ steps.arch_ref.outputs.arch_image }}"
+
+  build_and_push_arm64_image:
+    name: Build and push arm64 image
+    runs-on: [self-hosted, linux, arm64]
+    needs: [resolve_image_version]
+    outputs:
+      arch_image: ${{ steps.arch_ref.outputs.arch_image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub (optional)
+        if: ${{ vars.DOCKERHUB_USERNAME != '' && vars.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ vars.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve arm64 image ref
+        id: arch_ref
+        shell: bash
+        run: echo "arch_image=${{ needs.resolve_image_version.outputs.version_image }}-arm64" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push arm64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/arm64
+          tags: ${{ steps.arch_ref.outputs.arch_image }}
+          build-args: |
+            NEXT_PUBLIC_APP_VERSION=${{ needs.resolve_image_version.outputs.version_tag }}
+            VERSION_MANIFEST_URL=${{ needs.resolve_image_version.outputs.manifest_url }}
+          cache-from: type=local,src=/home/rusherz/.cache/buildx/floci-ui-arm64
+          cache-to: type=local,dest=/home/rusherz/.cache/buildx/floci-ui-arm64-new,mode=max
+
+      - name: Persist arm64 local buildx cache
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /home/rusherz/.cache/buildx
+          rm -rf /home/rusherz/.cache/buildx/floci-ui-arm64
+          if [ -d /home/rusherz/.cache/buildx/floci-ui-arm64-new ]; then
+            mv /home/rusherz/.cache/buildx/floci-ui-arm64-new /home/rusherz/.cache/buildx/floci-ui-arm64
+          fi
+
+      - name: Verify arm64 image manifest
+        shell: bash
+        run: docker buildx imagetools inspect "${{ steps.arch_ref.outputs.arch_image }}"
+
+  publish_version_manifest:
+    name: Publish version manifest
+    runs-on: [self-hosted, linux]
+    needs: [resolve_image_version, build_and_push_amd64_image, build_and_push_arm64_image]
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create version multi-arch manifest
+        shell: bash
+        run: |
+          docker buildx imagetools create \
+            -t "${{ needs.resolve_image_version.outputs.version_image }}" \
+            "${{ needs.build_and_push_amd64_image.outputs.arch_image }}" \
+            "${{ needs.build_and_push_arm64_image.outputs.arch_image }}"
+
+      - name: Verify version image manifest
+        shell: bash
+        run: docker buildx imagetools inspect "${{ needs.resolve_image_version.outputs.version_image }}"
