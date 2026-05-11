@@ -1183,8 +1183,8 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                   variant='outline'
                   size='icon'
                   onClick={() => setIsEventDetailExpanded((current) => !current)}
-                  aria-label={isEventDetailExpanded ? 'Restore split view' : 'Expand detail pane'}
-                  title={isEventDetailExpanded ? 'Restore split view' : 'Expand detail pane'}
+                  aria-label={isEventDetailExpanded ? 'Restore split view' : 'Open detail view'}
+                  title={isEventDetailExpanded ? 'Restore split view' : 'Open detail view'}
                 >
                   {isEventDetailExpanded ? <Minimize2 className='size-4' /> : <Maximize2 className='size-4' />}
                 </Button>
