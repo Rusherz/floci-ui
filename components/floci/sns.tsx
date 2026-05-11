@@ -12,12 +12,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { filterBySearch } from '@/lib/floci/search';
+import { selectableRowButtonClass, selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isValidTopicName, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { SnsSubscription, SnsTopic } from '@/lib/floci/types';
 import type { FlociElement } from '@/lib/floci/elements';
-import { cn } from '@/lib/utils';
 
 export default function SnsPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
@@ -162,7 +162,7 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
               <CardHeader>
                 <div className='flex items-center justify-between gap-2'>
                   <CardTitle className='text-base'>Topics ({filteredTopics.length})</CardTitle>
-                  <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create topic' title='Create topic'>
+                  <Button variant='emphasis' size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create topic' title='Create topic'>
                     <Plus className='size-4' />
                   </Button>
                 </div>
@@ -181,10 +181,10 @@ export default function SnsPage({ enabledElements }: { enabledElements: FlociEle
                           key={topic.arn}
                           type='button'
                           onClick={() => setSelectedTopicArn(topic.arn)}
-                          className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
+                          className={selectableRowButtonClass(active)}
                         >
                           <div className='truncate font-medium'>{topic.name}</div>
-                          <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{topic.arn}</p>
+                          <p className={selectableRowMetaTextClass(active)}>{topic.arn}</p>
                         </button>
                       );
                     })}

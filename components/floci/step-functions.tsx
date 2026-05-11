@@ -13,12 +13,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { filterBySearch } from '@/lib/floci/search';
+import { selectableRowButtonClass, selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { StepFunctionExecutionSummary, StepFunctionStateMachineSummary } from '@/lib/floci/types';
 import type { FlociElement } from '@/lib/floci/elements';
-import { cn } from '@/lib/utils';
 
 export default function StepFunctionsPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
@@ -170,7 +170,7 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>State Machines ({filtered.length})</CardTitle>
-            <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create state machine' title='Create state machine'>
+            <Button variant='emphasis' size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create state machine' title='Create state machine'>
               <Plus className='size-4' />
             </Button>
           </div>
@@ -189,10 +189,10 @@ export default function StepFunctionsPage({ enabledElements }: { enabledElements
                     key={sm.arn}
                     type='button'
                     onClick={() => setSelectedArn(sm.arn)}
-                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
+                    className={selectableRowButtonClass(active)}
                   >
                     <div className='truncate font-medium'>{sm.name}</div>
-                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{sm.type || 'STANDARD'}</p>
+                    <p className={selectableRowMetaTextClass(active)}>{sm.type || 'STANDARD'}</p>
                   </button>
                 );
               })}

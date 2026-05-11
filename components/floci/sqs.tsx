@@ -15,11 +15,11 @@ import { Input } from '@/components/ui/input';
 import { filterBySearch } from '@/lib/floci/search';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { createApiClient } from '@/lib/floci/api';
+import { selectableRowButtonClass, selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import { createApiConfig } from '@/lib/floci/config';
 import { createInitialState, STORAGE_KEYS, type AppState, type Queue, VIEWS } from '@/lib/floci/types';
 import { applyLoadedUiState, joinUrl, loadUiState, persistUiState } from '@/lib/floci/utils';
 import type { FlociElement } from '@/lib/floci/elements';
-import { cn } from '@/lib/utils';
 
 type Banner = ServiceStatus;
 
@@ -490,6 +490,7 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Queues ({filteredQueues.length})</CardTitle>
             <Button
+              variant='emphasis'
               size='icon'
               className='size-9'
               aria-label='Create queue'
@@ -519,10 +520,7 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
                     key={queue.name}
                     type='button'
                     onClick={() => void handleSelectQueue(index)}
-                    className={cn(
-                      'w-full rounded-md border px-3 py-2 text-left text-sm transition',
-                      active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent'
-                    )}
+                    className={selectableRowButtonClass(active)}
                   >
                     {queue.name}
                   </button>
@@ -557,14 +555,11 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
                       key={message.id}
                       type='button'
                       onClick={(event) => handleSelectMessage(index, event)}
-                      className={cn(
-                        'w-full select-none rounded-md border px-3 py-2 text-left text-sm transition focus:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
-                        active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent'
-                      )}
+                      className={selectableRowButtonClass(active, 'select-none')}
                     >
                       <div>{message.id}</div>
                       {message.sentAt && (
-                        <p className={cn('mt-1 text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>
+                        <p className={selectableRowMetaTextClass(active, 'mt-1')}>
                           {message.sentAt}
                         </p>
                       )}
@@ -656,9 +651,9 @@ export function SqsOpsPage({ enabledElements }: { enabledElements: FlociElement[
         onSubmit={handleCreateQueue}
       >
         <div className='grid gap-2'>
-          <button type='button' className='w-fit text-xs text-primary hover:underline' onClick={() => setSqsAdvancedOpen((current) => !current)}>
+          <Button type='button' variant='link' size='sm' className='h-auto w-fit p-0 text-xs' onClick={() => setSqsAdvancedOpen((current) => !current)}>
             {sqsAdvancedOpen ? 'Hide advanced settings' : 'Show advanced settings'}
-          </button>
+          </Button>
           {sqsAdvancedOpen ? (
             <div className='grid gap-2 rounded-md border p-3 sm:grid-cols-2'>
               <div className='grid gap-1'>

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
+import { selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import { createApiClient } from '@/lib/floci/api';
 import { createApiConfig } from '@/lib/floci/config';
 import { createInitialState, STORAGE_KEYS, type AppState, type FileEntry, VIEWS } from '@/lib/floci/types';
@@ -882,6 +883,7 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Buckets ({state.s3.buckets.length})</CardTitle>
             <Button
+              variant='emphasis'
               size='icon'
               className='size-9'
               aria-label='Create bucket'
@@ -916,12 +918,13 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
                     <div className='flex items-start gap-2'>
                       <button type='button' onClick={() => void handleSelectBucket(index)} className='min-w-0 flex-1 text-left'>
                         <div>{bucket.name}</div>
-                        <p className={cn('mt-1 text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{bucket.region}</p>
+                        <p className={selectableRowMetaTextClass(active, 'mt-1')}>{bucket.region}</p>
                       </button>
                       <Button
                         type='button'
-                        variant={active ? 'secondary' : 'destructive'}
-                        size='sm'
+                        variant='destructive'
+                        size='icon'
+                        className='size-8'
                         aria-label={`Delete bucket ${bucket.name}`}
                         onClick={() => void handleDeleteBucket(bucket.name)}
                       >
@@ -948,9 +951,9 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
                 {objectPathParts.map((item, index) => (
                   <div key={item.prefix} className='flex items-center gap-1'>
                     {index > 0 && <span>/</span>}
-                    <button type='button' className='text-primary hover:underline' onClick={() => void navigateToPrefix(item.prefix)}>
+                    <Button type='button' variant='link' size='sm' className='h-auto p-0' onClick={() => void navigateToPrefix(item.prefix)}>
                       {item.label}
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1130,9 +1133,9 @@ export function S3OpsPage({ enabledElements }: { enabledElements: FlociElement[]
         onSubmit={handleCreateBucket}
       >
         <div className='grid gap-2'>
-          <button type='button' className='w-fit text-xs text-primary hover:underline' onClick={() => setS3AdvancedOpen((current) => !current)}>
+          <Button type='button' variant='link' size='sm' className='h-auto w-fit p-0 text-xs' onClick={() => setS3AdvancedOpen((current) => !current)}>
             {s3AdvancedOpen ? 'Hide advanced settings' : 'Show advanced settings'}
-          </button>
+          </Button>
           {s3AdvancedOpen ? (
             <div className='grid gap-2 rounded-md border p-3 sm:grid-cols-2'>
               <div className='grid gap-1 sm:col-span-2'>

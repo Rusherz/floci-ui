@@ -13,12 +13,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { filterBySearch } from '@/lib/floci/search';
+import { selectableRowButtonClass } from '@/lib/floci/button-styles';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { DynamoTableDescription, DynamoTableSummary } from '@/lib/floci/types';
 import type { FlociElement } from '@/lib/floci/elements';
-import { cn } from '@/lib/utils';
 
 export default function DynamoDbPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
@@ -202,7 +202,7 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
               <CardHeader>
                 <div className='flex items-center justify-between gap-2'>
                   <CardTitle className='text-base'>Tables ({filteredTables.length})</CardTitle>
-                  <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create table' title='Create table'>
+                  <Button variant='emphasis' size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create table' title='Create table'>
                     <Plus className='size-4' />
                   </Button>
                 </div>
@@ -221,7 +221,7 @@ export default function DynamoDbPage({ enabledElements }: { enabledElements: Flo
                           key={table.name}
                           type='button'
                           onClick={() => setSelectedTable(table.name)}
-                          className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
+                          className={selectableRowButtonClass(active)}
                         >
                           {table.name}
                         </button>

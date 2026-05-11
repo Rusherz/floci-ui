@@ -13,12 +13,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { filterBySearch } from '@/lib/floci/search';
+import { selectableRowButtonClass, selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { SecretDetails, SecretSummary } from '@/lib/floci/types';
 import type { FlociElement } from '@/lib/floci/elements';
-import { cn } from '@/lib/utils';
 
 export default function SecretsManagerPage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
@@ -159,7 +159,7 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Secrets ({filtered.length})</CardTitle>
-            <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create secret' title='Create secret'>
+            <Button variant='emphasis' size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create secret' title='Create secret'>
               <Plus className='size-4' />
             </Button>
           </div>
@@ -179,10 +179,10 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
                     key={id}
                     type='button'
                     onClick={() => setSelectedSecretId(id)}
-                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
+                    className={selectableRowButtonClass(active)}
                   >
                     <div className='truncate font-medium'>{secret.name}</div>
-                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{secret.description || 'No description'}</p>
+                    <p className={selectableRowMetaTextClass(active)}>{secret.description || 'No description'}</p>
                   </button>
                 );
               })}
@@ -211,7 +211,7 @@ export default function SecretsManagerPage({ enabledElements }: { enabledElement
             ) : (
               <BoundedTextarea value={value} onChange={(event) => setValue(event.target.value)} className='font-mono' minHeightClassName='min-h-[150px]' maxHeightClassName='max-h-[34vh]' />
             )}
-            <Button onClick={() => void saveValue()} disabled={loading || !selectedSecretId}>
+            <Button variant='emphasis' onClick={() => void saveValue()} disabled={loading || !selectedSecretId}>
               Put Secret Value
             </Button>
           </CardContent>

@@ -18,9 +18,9 @@ import { filterBySearch } from '@/lib/floci/search';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { asyncActionError, asyncActionIdle, asyncActionLoading, asyncActionSuccess, createAsyncActionState, getCreateErrorMessage, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
+import { selectableRowButtonClass, selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import type { LambdaFunctionSummary } from '@/lib/floci/types';
 import type { FlociElement } from '@/lib/floci/elements';
-import { cn } from '@/lib/utils';
 
 type EditorEntry = {
   path: string;
@@ -382,7 +382,7 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
         <CardHeader>
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Functions ({filteredFunctions.length})</CardTitle>
-            <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create function' title='Create function'>
+            <Button variant='emphasis' size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create function' title='Create function'>
               <Plus className='size-4' />
             </Button>
           </div>
@@ -401,10 +401,10 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
                     key={fn.arn || fn.name}
                     type='button'
                     onClick={() => setSelectedFunctionName(fn.name)}
-                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
+                    className={selectableRowButtonClass(active)}
                   >
                     <div className='truncate font-medium'>{fn.name}</div>
-                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{fn.runtime}</p>
+                    <p className={selectableRowMetaTextClass(active)}>{fn.runtime}</p>
                   </button>
                 );
               })}
@@ -516,7 +516,7 @@ export default function LambdaPage({ enabledElements }: { enabledElements: Floci
                         key={entry.path}
                         type='button'
                         onClick={() => selectEntry(entry.path)}
-                        className={cn('w-full truncate rounded px-2 py-1 text-left text-xs', entry.path === selectedPath ? 'bg-primary/10 text-primary' : 'hover:bg-accent')}
+                        className={selectableRowButtonClass(entry.path === selectedPath, 'truncate px-2 py-1 text-xs')}
                       >
                         {entry.path}
                       </button>

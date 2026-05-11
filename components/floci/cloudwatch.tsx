@@ -18,6 +18,7 @@ import { filterBySearch, normalizeSearchTerm } from '@/lib/floci/search';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isValidCloudWatchLogGroupName, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
+import { selectableRowButtonClass, selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import type { CloudWatchLogEvent, CloudWatchLogGroupSummary, CloudWatchLogStreamSummary } from '@/lib/floci/types';
 import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
@@ -896,7 +897,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Log Groups ({filtered.length})</CardTitle>
             <div className='flex items-center gap-2'>
-              <Button size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create log group' title='Create log group'>
+              <Button variant='emphasis' size='icon' className='size-9' onClick={() => setCreateOpen(true)} aria-label='Create log group' title='Create log group'>
                 <Plus className='size-4' />
               </Button>
               <Button
@@ -984,13 +985,10 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                       data-group-name={group.logGroupName}
                       type='button'
                       onClick={(event) => handleSelectGroup(index, event)}
-                      className={cn(
-                        'w-full rounded-md border px-3 py-2 text-left text-sm transition focus:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
-                        active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent'
-                      )}
+                      className={selectableRowButtonClass(active)}
                     >
                     <div className='truncate font-medium'>{group.logGroupName}</div>
-                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{group.retentionInDays ? `${group.retentionInDays} day retention` : 'No retention'}</p>
+                    <p className={selectableRowMetaTextClass(active)}>{group.retentionInDays ? `${group.retentionInDays} day retention` : 'No retention'}</p>
                   </button>
                 );
               })}
@@ -1130,10 +1128,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
                         type='button'
                         onClick={() => setSelectedEventKey(getEventKey(event))}
                         onFocus={() => setSelectedEventKey(getEventKey(event))}
-                        className={cn(
-                          'w-full rounded-md border px-3 py-2 text-left transition focus:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary',
-                          active ? 'border-primary bg-primary/20' : 'border-border bg-background hover:bg-accent'
-                        )}
+                        className={selectableRowButtonClass(active)}
                       >
                         <div className='flex items-start justify-between gap-2'>
                           <div className='min-w-0 pr-2'>

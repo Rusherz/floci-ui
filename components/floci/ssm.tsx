@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { filterBySearch } from '@/lib/floci/search';
+import { selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction } from '@/lib/floci/create-workflows';
@@ -247,6 +248,7 @@ export default function SsmPage({ enabledElements }: { enabledElements: FlociEle
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Parameters ({filtered.length})</CardTitle>
             <Button
+              variant='emphasis'
               size='icon'
               className='size-9'
               onClick={openCreateDialog}
@@ -269,15 +271,14 @@ export default function SsmPage({ enabledElements }: { enabledElements: FlociEle
                 return (
                   <div
                     key={parameter.name}
-                    className={cn('flex items-start gap-2 rounded-md border p-2 transition', active ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-accent/40')}
+                    className={cn(
+                      'flex items-start gap-2 rounded-md border p-2 transition',
+                      active ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-accent/40'
+                    )}
                   >
-                    <button
-                      type='button'
-                      onClick={() => setSelectedName(parameter.name)}
-                      className={cn('min-w-0 flex-1 rounded-md px-1 py-1 text-left text-sm transition', active ? 'text-primary' : '')}
-                    >
-                      <div className='truncate font-medium'>{parameter.name}</div>
-                      <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{parameter.type}</p>
+                    <button type='button' onClick={() => setSelectedName(parameter.name)} className='min-w-0 flex-1 rounded-md px-1 py-1 text-left text-sm'>
+                      <div className={cn('truncate font-medium', active ? 'text-primary' : '')}>{parameter.name}</div>
+                      <p className={selectableRowMetaTextClass(active)}>{parameter.type}</p>
                     </button>
                     <Button
                       type='button'

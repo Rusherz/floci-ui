@@ -12,12 +12,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { filterBySearch } from '@/lib/floci/search';
+import { selectableRowButtonClass, selectableRowMetaTextClass } from '@/lib/floci/button-styles';
 import { EMPTY_SERVICE_STATUS, type ServiceStatus } from '@/lib/floci/service-ui';
 import { useFlociApi } from '@/lib/floci/use-floci-api';
 import { getCreateErrorMessage, isNonEmpty, logCreateAction, useOptimisticCreateRefresh } from '@/lib/floci/create-workflows';
 import type { EventRuleSummary, EventTargetSummary } from '@/lib/floci/types';
 import type { FlociElement } from '@/lib/floci/elements';
-import { cn } from '@/lib/utils';
 
 export default function EventBridgePage({ enabledElements }: { enabledElements: FlociElement[] }) {
   const api = useFlociApi();
@@ -221,6 +221,7 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
           <div className='flex items-center justify-between gap-2'>
             <CardTitle className='text-base'>Rules ({filtered.length})</CardTitle>
             <Button
+              variant='emphasis'
               size='icon'
               className='size-9'
               onClick={() => setCreateOpen(true)}
@@ -245,10 +246,10 @@ export default function EventBridgePage({ enabledElements }: { enabledElements: 
                     key={rule.arn || rule.name}
                     type='button'
                     onClick={() => setSelectedRule(rule.name)}
-                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition', active ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-accent')}
+                    className={selectableRowButtonClass(active)}
                   >
                     <div className='truncate font-medium'>{rule.name}</div>
-                    <p className={cn('mt-1 truncate text-xs', active ? 'text-primary/80' : 'text-muted-foreground')}>{rule.state}</p>
+                    <p className={selectableRowMetaTextClass(active)}>{rule.state}</p>
                   </button>
                 );
               })}
