@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Maximize2, Minimize2, Pencil, Plus, Trash2, X } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/floci/confirm-dialog';
 import { CreateResourceDialog } from '@/components/floci/create-resource-dialog';
@@ -215,6 +215,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
   const eventsListRef = useRef<HTMLDivElement | null>(null);
   const lastGroupAnchorRef = useRef<number | null>(null);
   const hasInitializedGroupSelectionRef = useRef(false);
+  const [isEventDetailExpanded, setIsEventDetailExpanded] = useState(false);
   const effectiveGroupNames = useMemo(() => {
     if (selectedGroups.length) return selectedGroups;
     return groups.map((group) => group.logGroupName);
@@ -877,6 +878,18 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
     [loadGroups, loadStreams, runFilter]
   );
 
+  useEffect(() => {
+    if (!isEventDetailExpanded) return;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [isEventDetailExpanded]);
+
   return (
     <ServiceShell
       enabledElements={enabledElements}
@@ -1066,7 +1079,7 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           ) : null}
         </Card>
 
-        <div className='grid min-h-0 min-w-0 gap-4 lg:grid-cols-2'>
+        <div className={cn('grid min-h-0 min-w-0 gap-4 lg:grid-cols-2', isEventDetailExpanded && 'hidden')}>
           <Card className='min-h-0 min-w-0 rounded-md shadow-none'>
             <CardHeader>
               <div className='flex items-center justify-between gap-2'>
@@ -1093,7 +1106,10 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
               ) : (
                 <div
                   ref={eventsListRef}
-                  className='flex h-[calc(100dvh-var(--service-header-offset,11rem))] flex-col gap-2 overflow-y-auto pr-1'
+                  className={cn(
+                    'flex flex-col gap-2 overflow-y-auto pr-1',
+                    isEventDetailExpanded ? 'h-[calc(100dvh-8rem)]' : 'h-[calc(100dvh-var(--service-header-offset,11rem))]'
+                  )}
                   tabIndex={0}
                   role='listbox'
                   aria-label='CloudWatch events'
@@ -1161,9 +1177,25 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
 
           <Card className='min-h-0 min-w-0 rounded-md shadow-none'>
             <CardHeader>
-              <CardTitle className='text-base'>Event Detail</CardTitle>
+              <div className='flex items-center justify-between gap-2'>
+                <CardTitle className='text-base'>Event Detail</CardTitle>
+                <Button
+                  variant='outline'
+                  size='icon'
+                  onClick={() => setIsEventDetailExpanded((current) => !current)}
+                  aria-label={isEventDetailExpanded ? 'Restore split view' : 'Expand detail pane'}
+                  title={isEventDetailExpanded ? 'Restore split view' : 'Expand detail pane'}
+                >
+                  {isEventDetailExpanded ? <Minimize2 className='size-4' /> : <Maximize2 className='size-4' />}
+                </Button>
+              </div>
             </CardHeader>
-          <CardContent className='flex h-[calc(100dvh-var(--service-header-offset,11rem))] flex-col overflow-y-auto'>
+          <CardContent
+            className={cn(
+              'flex flex-col overflow-y-auto',
+              isEventDetailExpanded ? 'h-[calc(100dvh-8rem)]' : 'h-[calc(100dvh-var(--service-header-offset,11rem))]'
+            )}
+          >
               {selectedEvent && selectedEvent.attributeRows?.length ? (
                 <div className='mb-3 shrink-0 rounded-md border bg-background/40 p-3'>
                   <p className='mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Attributes</p>
@@ -1215,6 +1247,76 @@ export default function CloudWatchPage({ enabledElements }: { enabledElements: F
           </CardContent>
         </Card>
         </div>
+        {isEventDetailExpanded ? (
+          <div className='fixed inset-0 z-[100] overflow-hidden bg-background'>
+            <Card className='flex h-full min-h-0 min-w-0 flex-col rounded-none border-0 shadow-none'>
+              <CardHeader>
+                <div className='flex items-center justify-between gap-2'>
+                  <CardTitle className='text-base'>Event Detail</CardTitle>
+                  <Button
+                    variant='outline'
+                    size='icon'
+                    onClick={() => setIsEventDetailExpanded(false)}
+                    aria-label='Restore split view'
+                    title='Restore split view'
+                  >
+                    <Minimize2 className='size-4' />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+                {selectedEvent && selectedEvent.attributeRows?.length ? (
+                  <div className='mb-3 shrink-0 overflow-y-auto rounded-md border bg-background/40 p-3'>
+                    <p className='mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Attributes</p>
+                    <dl className='grid gap-1'>
+                      {selectedEvent.attributeRows.map((entry, index) => (
+                        <div key={`${selectedEvent.eventId}-${entry.key}-${index}`} className='grid grid-cols-[180px_minmax(0,1fr)] gap-2 text-xs'>
+                          <dt className='truncate text-muted-foreground' style={{ paddingLeft: `${entry.depth * 10}px` }}>{entry.key}</dt>
+                          <dd className='whitespace-pre-wrap break-all font-medium text-foreground'>{entry.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ) : null}
+                {!initialEventsLoaded ? (
+                  <DetailSkeleton lines={10} />
+                ) : (
+                  <CodeEditor
+                    value={
+                      selectedEvent
+                        ? JSON.stringify(
+                            {
+                              timestamp: selectedEvent.timestamp,
+                              iso: new Date(selectedEvent.timestamp).toISOString(),
+                              level: selectedEvent.level,
+                              requestId: selectedEvent.requestId,
+                              service: selectedEvent.service,
+                              enduserId: selectedEvent.enduserId,
+                              requestRaw: selectedEvent.requestRaw,
+                              request: selectedEvent.requestFields,
+                              eventId: selectedEvent.eventId,
+                              logStreamName: selectedEvent.logStreamName,
+                              ingestionTime: selectedEvent.ingestionTime,
+                              message: selectedEvent.message,
+                              structured: selectedEvent.parsedPayload,
+                            },
+                            null,
+                            2
+                          )
+                        : 'Select an event.'
+                    }
+                    onChange={() => {}}
+                    path='event-detail.json'
+                    readOnly
+                    className='min-h-0 flex-1'
+                    height='100%'
+                    minHeight='0'
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        ) : null}
       </section>
       <CreateResourceDialog
         open={createOpen}

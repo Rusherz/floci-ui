@@ -39,7 +39,7 @@ export function ConsoleLayoutShell({ enabledElements, initialSidebarCollapsed, c
         <div className='relative z-40'>
           <FlociSidebar enabledElements={enabledElements} activeSlug={activeSlug} collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
         </div>
-        <section className='relative z-0 min-w-0 overflow-x-hidden'>{children}</section>
+        <section className='relative min-w-0 overflow-x-hidden'>{children}</section>
       </section>
     </main>
   );
