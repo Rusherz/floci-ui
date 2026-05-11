@@ -337,6 +337,11 @@ jobs:
       pages: write
       id-token: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 200
+
       - name: Create Pages artifact
         shell: bash
         run: |
@@ -346,12 +351,76 @@ jobs:
           BASE_URL="${BASE_URL%/}"
           MAIN_URL="$BASE_URL/version.json"
           DEV_URL="$BASE_URL/dev/version.json"
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            CURRENT_URL="$MAIN_URL"
+          else
+            CURRENT_URL="$DEV_URL"
+          fi
           RAW_CHANGES='${{ github.event.inputs.update_changes || '' }}'
-          CHANGES_JSON="$(node -e "
+          MANUAL_CHANGES_JSON="$(node -e "
             const raw = process.argv[1] || '';
             const changes = raw.split(/\\r?\\n/).map((s) => s.trim()).filter(Boolean);
             process.stdout.write(JSON.stringify(changes));
           " "$RAW_CHANGES")"
+
+          PREV_COMMIT=''
+          CURRENT_TMP="$(mktemp)"
+          if curl -fsS "$CURRENT_URL" -o "$CURRENT_TMP"; then
+            PREV_COMMIT="$(node -e "
+              try {
+                const json = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+                process.stdout.write(String(json.commit || '').trim());
+              } catch {
+                process.stdout.write('');
+              }
+            " "$CURRENT_TMP")"
+          fi
+          rm -f "$CURRENT_TMP"
+
+          if [[ -n "$RAW_CHANGES" ]]; then
+            CHANGES_JSON="$MANUAL_CHANGES_JSON"
+          else
+            LOG_RANGE=''
+            if [[ -n "$PREV_COMMIT" ]] && git cat-file -e "${PREV_COMMIT}^{commit}" >/dev/null 2>&1; then
+              LOG_RANGE="${PREV_COMMIT}..${{ github.sha }}"
+            else
+              LOG_RANGE="-20"
+            fi
+
+            if [[ "$LOG_RANGE" == "-20" ]]; then
+              COMMIT_SUBJECTS="$(git log --no-merges --format=%s -n 20)"
+            else
+              COMMIT_SUBJECTS="$(git log --no-merges --format=%s "$LOG_RANGE")"
+            fi
+
+            CHANGES_JSON="$(node -e "
+              const raw = process.argv[1] || '';
+              const lines = raw.split(/\\r?\\n/).map((s) => s.trim()).filter(Boolean);
+              const explicit = [];
+              for (const line of lines) {
+                const m = line.match(/^changelog:\\s*(.+)$/i);
+                if (m && m[1]) explicit.push(m[1].trim());
+              }
+              const conventional = [];
+              for (const line of lines) {
+                const m = line.match(/^(feat|fix|perf|refactor)(\\([^)]*\\))?:\\s+(.+)$/i);
+                if (m && m[3]) conventional.push(m[3].trim());
+              }
+              const picked = explicit.length ? explicit : conventional;
+              const unique = [];
+              const seen = new Set();
+              for (const item of picked) {
+                if (!item || seen.has(item)) continue;
+                seen.add(item);
+                unique.push(item);
+                if (unique.length >= 12) break;
+              }
+              if (!unique.length && lines[0]) {
+                unique.push(lines[0]);
+              }
+              process.stdout.write(JSON.stringify(unique));
+            " "$COMMIT_SUBJECTS")"
+          fi
 
           mkdir -p pages/dev
 
