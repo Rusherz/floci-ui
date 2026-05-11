@@ -17,6 +17,7 @@ export default defineConfig({
     env: {
       ...process.env,
       NEXT_PUBLIC_FLOCI_ENABLED_SERVICES: '*',
+      VERSION_MANIFEST_URL: 'http://127.0.0.1:9/version.json',
     },
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

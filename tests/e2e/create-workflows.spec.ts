@@ -228,6 +228,14 @@ async function expectListContainsName(page: Parameters<typeof test>[0]['page'], 
   await expect(page.getByRole('button', { name: new RegExp(escaped) }).first()).toBeVisible();
 }
 
+async function dismissUpdateBannerIfPresent(page: Parameters<typeof test>[0]['page']): Promise<void> {
+  const alert = page.getByRole('alert').filter({ hasText: 'New version available' }).first();
+  if ((await alert.count()) === 0) return;
+  const dismiss = alert.getByRole('button', { name: 'Dismiss' }).first();
+  if ((await dismiss.count()) === 0) return;
+  await dismiss.click();
+}
+
 test.describe('Create workflows', () => {
   test.beforeAll(async ({ request }) => {
     await sweepStaleTestResources(request);
@@ -276,7 +284,8 @@ test.describe('Create workflows', () => {
     await request.put(`/floci/${bucket}/${folderKey}`, { data: 'folder marker' });
     await request.put(`/floci/${bucket}/${objectKey}`, { data: 'playwright object body' });
 
-    await page.getByRole('button', { name: /refresh/i }).click();
+    await page.reload();
+    await page.getByRole('button', { name: bucket }).first().click();
     const folderButton = page.getByRole('button', { name: 'playwright-folder' }).first();
     await expect(folderButton).toBeVisible();
     await folderButton.click();
@@ -314,8 +323,8 @@ test.describe('Create workflows', () => {
     const messageId = extractAll(sendResult, 'MessageId')[0] || '';
     expect(messageId).not.toBe('');
 
+    await page.reload();
     await page.getByRole('button', { name: queue }).first().click();
-    await page.getByRole('button', { name: /refresh/i }).click();
     await expect(page.getByRole('button', { name: messageId })).toBeVisible();
 
     await page.getByRole('button', { name: messageId }).first().click();
@@ -494,6 +503,7 @@ test.describe('Create workflows', () => {
     await page.getByRole('button', { name: 'Update Retention' }).click();
     await expect(page.getByRole('button', { name: new RegExp(`${group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*No retention`) }).first()).toBeVisible();
 
+    await dismissUpdateBannerIfPresent(page);
     await page.getByRole('button', { name: 'Expand' }).click();
     await page.getByRole('button', { name: 'Run Filter' }).click();
     await expect(page.getByText(/Loaded .* event\(s\)/i)).toBeVisible();
