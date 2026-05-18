@@ -1,18 +1,8 @@
 name: Desktop Build
 
 on:
+  workflow_call:
   workflow_dispatch:
-  push:
-    branches: [main, dev]
-    paths:
-      - 'desktop/**'
-      - 'app/**'
-      - 'lib/**'
-      - 'public/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'next.config.mjs'
-      - '.github/workflows/desktop-build.yml'
 
 permissions:
   contents: read
