@@ -10,7 +10,13 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "demo:record": "node scripts/demo-record.mjs",
-    "demo:compress": "bash scripts/compress-demo-video.sh"
+    "demo:compress": "bash scripts/compress-demo-video.sh",
+    "desktop:dev": "tauri dev -c desktop/src-tauri/tauri.conf.json",
+    "desktop:build:linux": "tauri build -c desktop/src-tauri/tauri.conf.json --bundles deb,rpm",
+    "desktop:build:appimage": "NO_STRIP=true tauri build -c desktop/src-tauri/tauri.conf.json --bundles appimage",
+    "desktop:build:mac:intel": "tauri build -c desktop/src-tauri/tauri.conf.json --target x86_64-apple-darwin",
+    "desktop:build:mac:arm": "tauri build -c desktop/src-tauri/tauri.conf.json --target aarch64-apple-darwin",
+    "desktop:build:windows:x64": "tauri build -c desktop/src-tauri/tauri.conf.json --target x86_64-pc-windows-msvc"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
@@ -35,6 +41,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@tauri-apps/cli": "^2.11.2",
     "@types/node": "^22.10.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

@@ -40,6 +40,22 @@ npm run dev
 
 4. Open `http://localhost:4173`.
 
+## Desktop Application
+
+See [desktop/README.md](desktop/README.md) for local desktop dev/build.
+
+### CI Desktop Builds
+
+Desktop bundles are built by `.github/workflows/desktop-build.yml`.
+
+- Run manually: **Actions → Desktop Build → Run workflow**
+- Or push desktop/app/build changes to `main` or `dev`
+- Download artifacts from the workflow run:
+  - `desktop-linux-bundles` (`.deb`, `.rpm`, `.AppImage`)
+  - `desktop-macos-intel-bundles`
+  - `desktop-macos-arm-bundles`
+  - `desktop-windows-x64-bundles`
+
 ## Configuration
 
 | Variable | Scope | Default | Purpose |

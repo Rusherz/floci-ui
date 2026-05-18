@@ -24,3 +24,10 @@ lambdas/
 # Local agent workspace
 .claude/
 .playwright-mcp/
+
+# Tauri/Rust build outputs
+desktop/src-tauri/target/
+desktop/src-tauri/resources/next/*
+!desktop/src-tauri/resources/next/.gitkeep
+!desktop/src-tauri/resources/next/public/
+!desktop/src-tauri/resources/next/public/.gitkeep
