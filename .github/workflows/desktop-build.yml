@@ -10,7 +10,7 @@ permissions:
 jobs:
   linux:
     name: Linux desktop bundles
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -55,7 +55,7 @@ jobs:
 
   macos-intel:
     name: macOS Intel build
-    runs-on: macos-13
+    runs-on: [self-hosted, macOS, X64]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -85,7 +85,7 @@ jobs:
 
   macos-arm:
     name: macOS ARM build
-    runs-on: macos-14
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -115,7 +115,7 @@ jobs:
 
   windows-x64:
     name: Windows x64 build
-    runs-on: windows-2022
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
