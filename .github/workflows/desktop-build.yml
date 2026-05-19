@@ -51,14 +51,23 @@ jobs:
       - name: Build AppImage
         run: npm run desktop:build:appimage
 
-      - name: Upload Linux artifacts
+      - name: Upload Linux deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-linux-bundles
-          path: |
-            desktop/src-tauri/target/release/bundle/deb/*.deb
-            desktop/src-tauri/target/release/bundle/rpm/*.rpm
-            desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+          name: desktop-linux-deb
+          path: desktop/src-tauri/target/release/bundle/deb/*.deb
+
+      - name: Upload Linux rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-rpm
+          path: desktop/src-tauri/target/release/bundle/rpm/*.rpm
+
+      - name: Upload Linux AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-appimage
+          path: desktop/src-tauri/target/release/bundle/appimage/*.AppImage
 
       - name: Add Linux package list to run summary
         if: success()
