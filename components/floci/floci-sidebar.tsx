@@ -1,17 +1,20 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import {
   Bell,
   Braces,
   Database,
   FolderOpen,
+  Home,
   KeyRound,
   ListTree,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCcw,
   ScrollText,
+  Settings,
   SquareFunction,
   Workflow,
 } from 'lucide-react';
@@ -69,29 +72,21 @@ export function FlociSidebar({
   onToggleCollapse,
 }: FlociSidebarProps) {
   return (
-    <aside className={cn('border-b bg-card p-4 transition-[width] duration-200 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r', collapsed ? 'lg:w-[76px]' : 'lg:w-[250px]')}>
+    <aside
+      className={cn(
+        'border-b bg-card transition-[width,padding] duration-200 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r',
+        collapsed ? 'p-2 lg:w-[76px]' : 'p-4 lg:w-[250px]'
+      )}
+    >
       <div className='flex h-full flex-col gap-5'>
-        <div className='space-y-1'>
-          <div className='flex items-center justify-between gap-2'>
-            <div className={cn('min-w-0', collapsed && 'hidden')}>
-              <p className='text-xs font-semibold uppercase tracking-[0.22em] text-primary'>Floci</p>
-              <h1 className='text-2xl font-bold tracking-tight'>Ops Console</h1>
+        <div className={cn('space-y-1', collapsed && 'space-y-0')}>
+          <div className={cn('flex items-center', collapsed ? 'justify-center' : 'min-h-9 justify-start')}>
+            <div className='flex min-w-0 items-center gap-2'>
+              <Image src='/floci-brand-icon.png' alt='Floci' width={collapsed ? 32 : 24} height={collapsed ? 32 : 24} className='rounded-sm' />
+              {!collapsed ? <h1 className='text-base font-semibold tracking-tight'>Floci</h1> : null}
             </div>
-            {onToggleCollapse ? (
-              <Button
-                type='button'
-                size='icon'
-                variant='outline'
-                className='size-9 shrink-0'
-                onClick={onToggleCollapse}
-                title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              >
-                {collapsed ? <PanelLeftOpen className='size-4' /> : <PanelLeftClose className='size-4' />}
-              </Button>
-            ) : null}
           </div>
-          {!collapsed ? <p className='text-sm text-muted-foreground'>{subtitle}</p> : null}
+          {!collapsed ? <p className='text-xs text-muted-foreground'>{subtitle}</p> : null}
         </div>
 
         {!collapsed ? (
@@ -122,9 +117,25 @@ export function FlociSidebar({
 
         <div className='mt-auto space-y-2'>
           <Link href='/' className={cn(buttonVariants({ variant: 'outline' }), collapsed ? 'w-full justify-center px-0' : 'w-full justify-start gap-2')}>
-            {collapsed ? 'O' : 'Overview'}
+            {collapsed ? <Home className='size-4' /> : 'Overview'}
+          </Link>
+          <Link href='/settings' className={cn(buttonVariants({ variant: 'outline' }), collapsed ? 'w-full justify-center px-0' : 'w-full justify-start gap-2')}>
+            {collapsed ? <Settings className='size-4' /> : 'Settings'}
           </Link>
           <ThemeToggleButton className={cn(collapsed ? 'w-full justify-center px-0' : 'w-full justify-start gap-2')} iconOnly={collapsed} />
+          {onToggleCollapse ? (
+            <Button
+              type='button'
+              size='icon'
+              variant='outline'
+              className='size-9 w-full shrink-0'
+              onClick={onToggleCollapse}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {collapsed ? <PanelLeftOpen className='size-4' /> : <PanelLeftClose className='size-4' />}
+            </Button>
+          ) : null}
           {onRefresh ? (
             <Button
               variant='outline'

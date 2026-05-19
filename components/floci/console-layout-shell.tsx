@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
+import { FirstLaunchEndpointPrompt } from '@/components/floci/endpoint-settings';
 import { FlociSidebar } from '@/components/floci/floci-sidebar';
 import type { FlociElement } from '@/lib/floci/elements';
 import { cn } from '@/lib/utils';
@@ -39,7 +40,10 @@ export function ConsoleLayoutShell({ enabledElements, initialSidebarCollapsed, c
         <div className='relative z-40'>
           <FlociSidebar enabledElements={enabledElements} activeSlug={activeSlug} collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
         </div>
-        <section className='relative min-w-0 overflow-x-hidden'>{children}</section>
+        <section className='relative min-w-0 overflow-x-hidden'>
+          <FirstLaunchEndpointPrompt />
+          {children}
+        </section>
       </section>
     </main>
   );

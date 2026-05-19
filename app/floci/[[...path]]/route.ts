@@ -1,13 +1,15 @@
 import { NextRequest } from 'next/server';
+import { FLOCI_ENDPOINT_COOKIE, FLOCI_ENDPOINT_FALLBACK, isValidEndpointUrl } from '@/lib/floci/endpoint';
 
 export const runtime = 'nodejs';
 
-const FLOCI_ORIGIN = process.env.FLOCI_ORIGIN || 'http://localhost:4566';
 type RouteContext = { params: Promise<{ path?: string[] }> };
 
 async function proxyRequest(request: NextRequest, params?: { path?: string[] }) {
   const path = params?.path?.length ? `/${params.path.join('/')}` : '/';
-  const upstream = new URL(path, FLOCI_ORIGIN);
+  const configuredEndpoint = request.cookies.get(FLOCI_ENDPOINT_COOKIE)?.value?.trim();
+  const origin = configuredEndpoint && isValidEndpointUrl(configuredEndpoint) ? configuredEndpoint : FLOCI_ENDPOINT_FALLBACK;
+  const upstream = new URL(path, origin);
   upstream.search = request.nextUrl.search;
 
   const headers = new Headers(request.headers);

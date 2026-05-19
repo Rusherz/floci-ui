@@ -53,66 +53,6 @@ jobs:
             desktop/src-tauri/target/release/bundle/rpm/*.rpm
             desktop/src-tauri/target/release/bundle/appimage/*.AppImage
 
-  macos-intel:
-    name: macOS Intel build
-    runs-on: [self-hosted, macOS, X64]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: 'npm'
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build macOS Intel bundle
-        run: npm run desktop:build:mac:intel
-
-      - name: Upload macOS Intel artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-macos-intel-bundles
-          path: desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/**
-
-  macos-arm:
-    name: macOS ARM build
-    runs-on: [self-hosted, macOS, ARM64]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: 'npm'
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build macOS ARM bundle
-        run: npm run desktop:build:mac:arm
-
-      - name: Upload macOS ARM artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-macos-arm-bundles
-          path: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/**
-
   windows-x64:
     name: Windows x64 build
     runs-on: [self-hosted, Windows, X64]

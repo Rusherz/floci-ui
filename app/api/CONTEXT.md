@@ -12,6 +12,10 @@ _Avoid_: integration layer, backend
 The Floci process that receives proxied calls.
 _Avoid_: server, API
 
+**Upstream Endpoint Setting**:
+The user-configurable base URL used by the proxy to reach the **Upstream Runtime**, with a localhost fallback when unset.
+_Avoid_: env var, hardcoded origin
+
 **Proxy Route**:
 A server endpoint that relays method, path, query, headers, and body to the **Upstream Runtime**.
 _Avoid_: passthrough, tunnel
