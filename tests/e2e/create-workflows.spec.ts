@@ -7,6 +7,9 @@ function uniqueName(prefix: string): string {
 }
 
 const accountId = process.env.NEXT_PUBLIC_FLOCI_SQS_ACCOUNT_ID || '000000000000';
+const firstLaunchKey = 'floci_first_launch_seen';
+const endpointCookieName = 'floci_endpoint';
+const endpointFallback = 'http://localhost:4566';
 
 type CreatedResources = {
   buckets: string[];
@@ -239,6 +242,25 @@ async function dismissUpdateBannerIfPresent(page: Parameters<typeof test>[0]['pa
 test.describe('Create workflows', () => {
   test.beforeAll(async ({ request }) => {
     await sweepStaleTestResources(request);
+  });
+
+  test.beforeEach(async ({ page, baseURL, context }) => {
+    await page.addInitScript(([key, value]) => {
+      window.localStorage.setItem(key, value);
+    }, [firstLaunchKey, '1']);
+
+    const url = new URL(baseURL || 'http://localhost:4173');
+    await context.addCookies([
+      {
+        name: endpointCookieName,
+        value: encodeURIComponent(endpointFallback),
+        domain: url.hostname,
+        path: '/',
+        httpOnly: false,
+        secure: false,
+        sameSite: 'Lax',
+      },
+    ]);
   });
 
   test.afterEach(async ({ request }, testInfo) => {
