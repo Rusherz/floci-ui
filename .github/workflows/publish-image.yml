@@ -35,13 +35,6 @@ jobs:
     uses: ./.github/workflows/publish-image-build.yml
     secrets: inherit
 
-  desktop_build:
-    name: Desktop Build
-    needs: [build_pipeline]
-    if: needs.build_pipeline.result == 'success'
-    uses: ./.github/workflows/desktop-build.yml
-    secrets: inherit
-
   release_distribution:
     name: Release Distribution
     needs: [build_pipeline]
