@@ -60,6 +60,18 @@ jobs:
             desktop/src-tauri/target/release/bundle/rpm/*.rpm
             desktop/src-tauri/target/release/bundle/appimage/*.AppImage
 
+      - name: Add Linux package list to run summary
+        if: success()
+        run: |
+          echo "## Linux desktop bundles" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -lh \
+            desktop/src-tauri/target/release/bundle/deb/*.deb \
+            desktop/src-tauri/target/release/bundle/rpm/*.rpm \
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
   windows-x64:
     name: Windows x64 build
     runs-on: [self-hosted, Windows, X64]
@@ -91,3 +103,16 @@ jobs:
         with:
           name: desktop-windows-x64-bundles
           path: desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**
+
+      - name: Add Windows package list to run summary
+        if: success()
+        shell: powershell
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Windows x64 desktop bundles"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+          Get-ChildItem -Path "desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle" -Recurse -File |
+            Select-Object Length, FullName |
+            Format-Table -AutoSize | Out-String -Width 4096 |
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
