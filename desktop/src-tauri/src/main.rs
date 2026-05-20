@@ -4,6 +4,14 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
+fn show_startup_error(message: &str) {
+    let _ = rfd::MessageDialog::new()
+        .set_title("Floci Desktop failed to start")
+        .set_description(message)
+        .set_level(rfd::MessageLevel::Error)
+        .show();
+}
+
 const APP_PORT: &str = "4173";
 
 fn spawn_next_standalone() -> Result<Child, String> {
@@ -25,8 +33,18 @@ fn main() {
             let child_proc = Arc::clone(&child_proc);
             move |app| {
                 if !cfg!(debug_assertions) {
-                    let child = spawn_next_standalone()?;
-                    *child_proc.lock().expect("child mutex poisoned") = Some(child);
+                    match spawn_next_standalone() {
+                        Ok(child) => {
+                            *child_proc.lock().expect("child mutex poisoned") = Some(child);
+                        }
+                        Err(err) => {
+                            show_startup_error(&format!(
+                                "Could not launch bundled Node/Next runtime.\n\n{}\n\nMake sure Node.js is installed system-wide and available on PATH for desktop apps.",
+                                err
+                            ));
+                            return Err(err.into());
+                        }
+                    }
                 }
 
                 let url = format!("http://127.0.0.1:{APP_PORT}");
@@ -34,7 +52,11 @@ fn main() {
                     .title("Floci Desktop")
                     .inner_size(1200.0, 800.0)
                     .build()
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| {
+                        let msg = format!("Failed to create main window: {e}");
+                        show_startup_error(&msg);
+                        msg
+                    })?;
 
                 Ok(())
             }

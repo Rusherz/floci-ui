@@ -8,7 +8,9 @@ type RouteContext = { params: Promise<{ path?: string[] }> };
 async function proxyRequest(request: NextRequest, params?: { path?: string[] }) {
   const path = params?.path?.length ? `/${params.path.join('/')}` : '/';
   const configuredEndpoint = request.cookies.get(FLOCI_ENDPOINT_COOKIE)?.value?.trim();
-  const origin = configuredEndpoint && isValidEndpointUrl(configuredEndpoint) ? configuredEndpoint : FLOCI_ENDPOINT_FALLBACK;
+  const envEndpoint = process.env.FLOCI_ORIGIN?.trim();
+  const defaultEndpoint = envEndpoint && isValidEndpointUrl(envEndpoint) ? envEndpoint : FLOCI_ENDPOINT_FALLBACK;
+  const origin = configuredEndpoint && isValidEndpointUrl(configuredEndpoint) ? configuredEndpoint : defaultEndpoint;
   const upstream = new URL(path, origin);
   upstream.search = request.nextUrl.search;
 

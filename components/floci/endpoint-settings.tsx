@@ -96,9 +96,11 @@ export function FirstLaunchEndpointPrompt() {
           <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={FLOCI_ENDPOINT_FALLBACK} />
           {error ? <p className='text-xs text-destructive'>{error}</p> : null}
         </div>
-        <DialogFooter>
-          <Button variant='outline' onClick={() => complete(FLOCI_ENDPOINT_FALLBACK)}>Use default localhost</Button>
-          <Button onClick={onSave}>Save endpoint</Button>
+        <DialogFooter className='flex-col sm:flex-row gap-2'>
+          <Button className='w-full sm:w-auto' variant='outline' onClick={() => complete(FLOCI_ENDPOINT_FALLBACK)}>
+            Use default ({FLOCI_ENDPOINT_FALLBACK})
+          </Button>
+          <Button className='w-full sm:w-auto' onClick={onSave}>Save endpoint</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
