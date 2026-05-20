@@ -83,12 +83,14 @@ jobs:
         env:
           RUN_FLOCI_E2E: '1'
           NEXT_PUBLIC_FLOCI_ENABLED_SERVICES: '*'
+          FLOCI_ORIGIN: 'http://localhost:4566'
         run: npm run lint
 
       - name: Run Playwright e2e
         env:
           RUN_FLOCI_E2E: '1'
           NEXT_PUBLIC_FLOCI_ENABLED_SERVICES: '*'
+          FLOCI_ORIGIN: 'http://localhost:4566'
         run: npm run test:e2e
 
       - name: Stop Floci
