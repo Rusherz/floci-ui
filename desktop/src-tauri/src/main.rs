@@ -2,7 +2,8 @@
 
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use std::{env, path::PathBuf};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn show_startup_error(message: &str) {
     let _ = rfd::MessageDialog::new()
@@ -14,15 +15,69 @@ fn show_startup_error(message: &str) {
 
 const APP_PORT: &str = "4173";
 
-fn spawn_next_standalone() -> Result<Child, String> {
-    Command::new("node")
+#[cfg(target_os = "windows")]
+fn windows_node_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
+        candidates.push(
+            PathBuf::from(local_app_data)
+                .join("Programs")
+                .join("nodejs")
+                .join("node.exe"),
+        );
+    }
+    if let Ok(program_files) = env::var("ProgramFiles") {
+        candidates.push(PathBuf::from(program_files).join("nodejs").join("node.exe"));
+    }
+    if let Ok(program_files_x86) = env::var("ProgramFiles(x86)") {
+        candidates.push(PathBuf::from(program_files_x86).join("nodejs").join("node.exe"));
+    }
+
+    candidates
+}
+
+fn resolve_node_executable() -> String {
+    if let Ok(node_bin) = env::var("FLOCI_NODE_BIN") {
+        if !node_bin.trim().is_empty() {
+            return node_bin;
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        for candidate in windows_node_candidates() {
+            if candidate.exists() {
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+        "node.exe".to_string()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        "node".to_string()
+    }
+}
+
+fn spawn_next_standalone(resources_next_dir: &PathBuf) -> Result<Child, String> {
+    let node_bin = resolve_node_executable();
+
+    Command::new(&node_bin)
         .arg("server.js")
-        .current_dir("resources/next")
+        .current_dir(resources_next_dir)
         .env("PORT", APP_PORT)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .map_err(|e| format!("failed to start bundled Next.js server: {e}"))
+        .map_err(|e| {
+            format!(
+                "failed to start bundled Next.js server with `{}` in `{}`: {}",
+                node_bin,
+                resources_next_dir.display(),
+                e
+            )
+        })
 }
 
 fn main() {
@@ -33,7 +88,22 @@ fn main() {
             let child_proc = Arc::clone(&child_proc);
             move |app| {
                 if !cfg!(debug_assertions) {
-                    match spawn_next_standalone() {
+                    let resources_next_dir = app
+                        .path()
+                        .resource_dir()
+                        .map_err(|e| format!("failed to resolve app resource dir: {e}"))?
+                        .join("next");
+
+                    if !resources_next_dir.join("server.js").exists() {
+                        let err = format!(
+                            "bundled Next.js entrypoint missing at {}",
+                            resources_next_dir.join("server.js").display()
+                        );
+                        show_startup_error(&err);
+                        return Err(err.into());
+                    }
+
+                    match spawn_next_standalone(&resources_next_dir) {
                         Ok(child) => {
                             *child_proc.lock().expect("child mutex poisoned") = Some(child);
                         }
