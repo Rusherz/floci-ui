@@ -49,6 +49,8 @@ jobs:
         run: npm run desktop:build:linux
 
       - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
         run: npm run desktop:build:appimage
 
       - name: Upload Linux deb artifact
