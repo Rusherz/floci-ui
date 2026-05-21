@@ -5,6 +5,9 @@ use std::sync::{Arc, Mutex};
 use std::{env, path::PathBuf};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 fn show_startup_error(message: &str) {
     let _ = rfd::MessageDialog::new()
         .set_title("Floci Desktop failed to start")
@@ -94,21 +97,29 @@ fn resolve_next_resources_dir(app: &tauri::App) -> Result<PathBuf, String> {
 fn spawn_next_standalone(resources_next_dir: &PathBuf) -> Result<Child, String> {
     let node_bin = resolve_node_executable();
 
-    Command::new(&node_bin)
+    let mut command = Command::new(&node_bin);
+    command
         .arg("server.js")
         .current_dir(resources_next_dir)
         .env("PORT", APP_PORT)
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| {
-            format!(
-                "failed to start bundled Next.js server with `{}` in `{}`: {}",
-                node_bin,
-                resources_next_dir.display(),
-                e
-            )
-        })
+        .stderr(Stdio::inherit());
+
+    #[cfg(target_os = "windows")]
+    {
+        // Prevent node.exe from opening a console window in packaged GUI app.
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    command.spawn().map_err(|e| {
+        format!(
+            "failed to start bundled Next.js server with `{}` in `{}`: {}",
+            node_bin,
+            resources_next_dir.display(),
+            e
+        )
+    })
 }
 
 fn main() {
