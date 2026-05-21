@@ -60,6 +60,37 @@ fn resolve_node_executable() -> String {
     }
 }
 
+fn resolve_next_resources_dir(app: &tauri::App) -> Result<PathBuf, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("failed to resolve app resource dir: {e}"))?;
+
+    let mut candidates = vec![resource_dir.join("next"), resource_dir.join("resources").join("next")];
+
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            candidates.push(exe_dir.join("resources").join("next"));
+            candidates.push(exe_dir.join("next"));
+        }
+    }
+
+    for candidate in &candidates {
+        if candidate.join("server.js").exists() {
+            return Ok(candidate.clone());
+        }
+    }
+
+    Err(format!(
+        "bundled Next.js entrypoint missing. Checked: {}",
+        candidates
+            .iter()
+            .map(|p| p.join("server.js").display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
 fn spawn_next_standalone(resources_next_dir: &PathBuf) -> Result<Child, String> {
     let node_bin = resolve_node_executable();
 
@@ -88,20 +119,13 @@ fn main() {
             let child_proc = Arc::clone(&child_proc);
             move |app| {
                 if !cfg!(debug_assertions) {
-                    let resources_next_dir = app
-                        .path()
-                        .resource_dir()
-                        .map_err(|e| format!("failed to resolve app resource dir: {e}"))?
-                        .join("next");
-
-                    if !resources_next_dir.join("server.js").exists() {
-                        let err = format!(
-                            "bundled Next.js entrypoint missing at {}",
-                            resources_next_dir.join("server.js").display()
-                        );
-                        show_startup_error(&err);
-                        return Err(err.into());
-                    }
+                    let resources_next_dir = match resolve_next_resources_dir(app) {
+                        Ok(dir) => dir,
+                        Err(err) => {
+                            show_startup_error(&err);
+                            return Err(err.into());
+                        }
+                    };
 
                     match spawn_next_standalone(&resources_next_dir) {
                         Ok(child) => {
