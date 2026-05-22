@@ -187,6 +187,12 @@ jobs:
             echo "- Manifest URL: \`${{ steps.manifest_url.outputs.manifest_url }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  desktop_build:
+    name: Desktop Build
+    needs: [resolve_image_version]
+    uses: ./.github/workflows/desktop-build.yml
+    secrets: inherit
+
   build_and_push_amd64_image:
     name: Build and push amd64 image
     runs-on: [self-hosted, linux, amd64]

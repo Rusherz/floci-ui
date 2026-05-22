@@ -30,11 +30,6 @@ permissions:
   id-token: write
 
 jobs:
-  desktop_build:
-    name: Desktop Build
-    uses: ./.github/workflows/desktop-build.yml
-    secrets: inherit
-
   build_pipeline:
     name: Build Pipeline
     uses: ./.github/workflows/publish-image-build.yml
@@ -56,8 +51,8 @@ jobs:
 
   publish_summary:
     name: Publish summary
-    needs: [desktop_build, build_pipeline, release_distribution]
-    if: always() && needs.desktop_build.result == 'success' && needs.build_pipeline.result == 'success' && (needs.release_distribution.result == 'success' || needs.release_distribution.result == 'skipped')
+    needs: [build_pipeline, release_distribution]
+    if: always() && needs.build_pipeline.result == 'success' && (needs.release_distribution.result == 'success' || needs.release_distribution.result == 'skipped')
     uses: ./.github/workflows/publish-image-summary.yml
     with:
       version_image: ${{ needs.build_pipeline.outputs.version_image }}
