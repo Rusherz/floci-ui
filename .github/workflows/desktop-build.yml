@@ -53,16 +53,27 @@ jobs:
           rm -rf desktop/src-tauri/target/release/bundle/deb
           rm -rf desktop/src-tauri/target/release/bundle/rpm
 
+      - name: Prepare standalone bundle for AppImage debug
+        run: node ./desktop/build-next-standalone.mjs
+
       - name: Debug staged native modules before AppImage
         run: |
           echo "## Debug: staged native modules before AppImage" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -d desktop/src-tauri/resources/next ]; then
+            echo "[resources/next matches]"
+            find desktop/src-tauri/resources/next -type f | rg -n "musl|sharp-linux|sharp-libvips|\\.node$" || true
+          else
+            echo "desktop/src-tauri/resources/next not present"
+          fi
           if [ -d desktop/src-tauri/target/release/resources/next ]; then
+            echo "[target/release/resources/next matches]"
             find desktop/src-tauri/target/release/resources/next -type f | rg -n "musl|sharp-linux|sharp-libvips|\\.node$" || true
           else
-            echo "resources/next not present yet"
+            echo "desktop/src-tauri/target/release/resources/next not present yet"
           fi
           if [ -d desktop/src-tauri/target/release/bundle/appimage_deb ]; then
+            echo "[bundle/appimage_deb matches]"
             find desktop/src-tauri/target/release/bundle/appimage_deb -type f | rg -n "musl|sharp-linux|sharp-libvips|\\.node$" || true
           else
             echo "bundle/appimage_deb not present yet"
@@ -72,7 +83,7 @@ jobs:
       - name: Build AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
-        run: npm run desktop:build:appimage
+        run: npx tauri build -v -c desktop/src-tauri/tauri.conf.json --bundles appimage --config '{"build":{"beforeBuildCommand":null}}'
 
       - name: Build deb/rpm
         run: npm run desktop:build:linux
