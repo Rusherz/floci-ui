@@ -144,11 +144,17 @@ jobs:
       - name: Build Windows x64 bundle
         run: npm run desktop:build:windows:x64
 
-      - name: Upload Windows artifacts
+      - name: Upload Windows MSI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-windows-x64-bundles
-          path: desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**
+          name: desktop-windows-x64-msi
+          path: desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+
+      - name: Upload Windows NSIS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-x64-nsis
+          path: desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
       - name: Add Windows package list to run summary
         if: success()
@@ -157,7 +163,11 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Windows x64 desktop bundles"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
-          Get-ChildItem -Path "desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle" -Recurse -File |
+          Get-ChildItem -Path "desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" -Filter "*.msi" -File |
+            Select-Object Length, FullName |
+            Format-Table -AutoSize | Out-String -Width 4096 |
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          Get-ChildItem -Path "desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis" -Filter "*.exe" -File |
             Select-Object Length, FullName |
             Format-Table -AutoSize | Out-String -Width 4096 |
             Add-Content -Path $env:GITHUB_STEP_SUMMARY
