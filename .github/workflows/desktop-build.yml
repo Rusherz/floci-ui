@@ -53,6 +53,22 @@ jobs:
           rm -rf desktop/src-tauri/target/release/bundle/deb
           rm -rf desktop/src-tauri/target/release/bundle/rpm
 
+      - name: Debug staged native modules before AppImage
+        run: |
+          echo "## Debug: staged native modules before AppImage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -d desktop/src-tauri/target/release/resources/next ]; then
+            find desktop/src-tauri/target/release/resources/next -type f | rg -n "musl|sharp-linux|sharp-libvips|\\.node$" || true
+          else
+            echo "resources/next not present yet"
+          fi
+          if [ -d desktop/src-tauri/target/release/bundle/appimage_deb ]; then
+            find desktop/src-tauri/target/release/bundle/appimage_deb -type f | rg -n "musl|sharp-linux|sharp-libvips|\\.node$" || true
+          else
+            echo "bundle/appimage_deb not present yet"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
