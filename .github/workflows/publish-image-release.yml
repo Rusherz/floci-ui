@@ -24,7 +24,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   pages: write
   id-token: write
@@ -33,6 +33,93 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  publish_desktop_release:
+    name: Publish desktop release assets
+    runs-on: [self-hosted, linux]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+    steps:
+      - name: Download Linux deb artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: desktop-linux-deb
+          path: desktop-release-assets
+
+      - name: Download Linux rpm artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: desktop-linux-rpm
+          path: desktop-release-assets
+
+      - name: Download Linux AppImage artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: desktop-linux-appimage
+          path: desktop-release-assets
+
+      - name: Download Windows MSI artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: desktop-windows-x64-msi
+          path: desktop-release-assets
+
+      - name: Download Windows NSIS artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: desktop-windows-x64-nsis
+          path: desktop-release-assets
+
+      - name: Publish release and upload desktop assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            RELEASE_TAG="desktop-v${{ inputs.version_tag }}"
+            RELEASE_TITLE="Desktop v${{ inputs.version_tag }}"
+            PRERELEASE_FLAG=""
+            CHANNEL_NOTE="stable"
+          else
+            RELEASE_TAG="desktop-v${{ inputs.version_tag }}-rc"
+            RELEASE_TITLE="Desktop v${{ inputs.version_tag }} (RC)"
+            PRERELEASE_FLAG="--prerelease"
+            CHANNEL_NOTE="rc"
+          fi
+
+          mapfile -t ASSET_FILES < <(find desktop-release-assets -maxdepth 1 -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.msi" -o -name "*.exe" \) | sort)
+          if [[ ${#ASSET_FILES[@]} -eq 0 ]]; then
+            echo "No desktop release assets found." >&2
+            exit 1
+          fi
+
+          NOTES_FILE="$(mktemp)"
+          cat > "$NOTES_FILE" <<EOF
+          Desktop bundles for Floci UI.
+
+          - Version: ${{ inputs.version_tag }}
+          - Channel: $CHANNEL_NOTE
+          - Commit: ${{ github.sha }}
+          - Source run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+
+          if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${ASSET_FILES[@]}" --clobber --repo "${{ github.repository }}"
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE" --repo "${{ github.repository }}" $PRERELEASE_FLAG
+          else
+            gh release create "$RELEASE_TAG" "${ASSET_FILES[@]}" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE" --target "${{ github.sha }}" --repo "${{ github.repository }}" $PRERELEASE_FLAG
+          fi
+
+          {
+            echo "## Published desktop release assets"
+            echo "- Release: \`$RELEASE_TAG\`"
+            echo "- URL: \`https://github.com/${{ github.repository }}/releases/tag/$RELEASE_TAG\`"
+            echo "- Files:"
+            for asset in "${ASSET_FILES[@]}"; do
+              echo "  - \`$(basename "$asset")\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
   publish_pages_version:
     name: Publish Pages version.json
     runs-on: [self-hosted, linux]
