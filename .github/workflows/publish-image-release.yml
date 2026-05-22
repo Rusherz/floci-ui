@@ -87,11 +87,22 @@ jobs:
             CHANNEL_NOTE="rc"
           fi
 
-          mapfile -t ASSET_FILES < <(find desktop-release-assets -maxdepth 1 -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.msi" -o -name "*.exe" \) | sort)
-          if [[ ${#ASSET_FILES[@]} -eq 0 ]]; then
+          mapfile -t RAW_ASSET_FILES < <(find desktop-release-assets -maxdepth 1 -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.msi" -o -name "*.exe" \) | sort)
+          if [[ ${#RAW_ASSET_FILES[@]} -eq 0 ]]; then
             echo "No desktop release assets found." >&2
             exit 1
           fi
+
+          ZIP_DIR="desktop-release-zips"
+          mkdir -p "$ZIP_DIR"
+          ZIP_ASSET_FILES=()
+          for asset in "${RAW_ASSET_FILES[@]}"; do
+            base_name="$(basename "$asset")"
+            zip_path="$ZIP_DIR/${base_name}.zip"
+            rm -f "$zip_path"
+            zip -j "$zip_path" "$asset"
+            ZIP_ASSET_FILES+=("$zip_path")
+          done
 
           NOTES_FILE="$(mktemp)"
           cat > "$NOTES_FILE" <<EOF
@@ -104,18 +115,18 @@ jobs:
           EOF
 
           if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${ASSET_FILES[@]}" --clobber --repo "${{ github.repository }}"
+            gh release upload "$RELEASE_TAG" "${ZIP_ASSET_FILES[@]}" --clobber --repo "${{ github.repository }}"
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE" --repo "${{ github.repository }}" $PRERELEASE_FLAG
           else
-            gh release create "$RELEASE_TAG" "${ASSET_FILES[@]}" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE" --target "${{ github.sha }}" --repo "${{ github.repository }}" $PRERELEASE_FLAG
+            gh release create "$RELEASE_TAG" "${ZIP_ASSET_FILES[@]}" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE" --target "${{ github.sha }}" --repo "${{ github.repository }}" $PRERELEASE_FLAG
           fi
 
           {
             echo "## Published desktop release assets"
             echo "- Release: \`$RELEASE_TAG\`"
             echo "- URL: \`https://github.com/${{ github.repository }}/releases/tag/$RELEASE_TAG\`"
-            echo "- Files:"
-            for asset in "${ASSET_FILES[@]}"; do
+            echo "- Zip files:"
+            for asset in "${ZIP_ASSET_FILES[@]}"; do
               echo "  - \`$(basename "$asset")\`"
             done
           } >> "$GITHUB_STEP_SUMMARY"
