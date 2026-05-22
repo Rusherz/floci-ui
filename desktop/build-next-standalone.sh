@@ -16,4 +16,9 @@ mkdir -p "$OUT_DIR/.next"
 cp -R .next/static "$OUT_DIR/.next/static"
 cp -R public "$OUT_DIR/public"
 
+# AppImage bundling runs on glibc; keep only glibc sharp binaries.
+rm -rf \
+  "$OUT_DIR/node_modules/@img/sharp-linuxmusl-x64" \
+  "$OUT_DIR/node_modules/@img/sharp-libvips-linuxmusl-x64"
+
 echo "Prepared standalone Next.js bundle at: $OUT_DIR"

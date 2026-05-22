@@ -19,4 +19,14 @@ mkdirSync(path.join(outDir, '.next'), { recursive: true });
 cpSync(path.join(rootDir, '.next', 'static'), path.join(outDir, '.next', 'static'), { recursive: true });
 cpSync(path.join(rootDir, 'public'), path.join(outDir, 'public'), { recursive: true });
 
+// AppImage bundling runs on glibc; keep only glibc sharp binaries.
+const muslOnlyPaths = [
+  path.join(outDir, 'node_modules', '@img', 'sharp-linuxmusl-x64'),
+  path.join(outDir, 'node_modules', '@img', 'sharp-libvips-linuxmusl-x64'),
+];
+
+for (const muslPath of muslOnlyPaths) {
+  rmSync(muslPath, { recursive: true, force: true });
+}
+
 console.log(`Prepared standalone Next.js bundle at: ${outDir}`);
